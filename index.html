@@ -463,7 +463,22 @@ function onAcctChange() {
 
 // ─── WEBSOCKET ────────────────────────────────────────────────────────────────
 
-// Step 1: Fetch all accounts (demo + real) from REST API
+let _pingTimer = null;
+
+function startPing() {
+  stopPing();
+  _pingTimer = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      wsSend({ ping: 1 });
+    }
+  }, 20000); // ping every 20 s to keep connection alive
+}
+
+function stopPing() {
+  if (_pingTimer) { clearInterval(_pingTimer); _pingTimer = null; }
+}
+
+// Fetch all accounts (demo + real) from REST API
 async function fetchAccounts() {
   const res = await fetch(API_BASE + '/trading/v1/options/accounts', {
     headers: {
@@ -471,16 +486,15 @@ async function fetchAccounts() {
       'Deriv-App-ID':  APP_ID,
     },
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error('Accounts fetch failed (' + res.status + '): ' + err);
-  }
-  const json = await res.json();
-  // Response: { data: [ { id, currency, is_virtual, balance, ... }, ... ] }
-  return json.data || json.accounts || json;
+  const text = await res.text();
+  addLog('[DEBUG] Accounts raw: ' + text.slice(0, 300), 'info');
+  if (!res.ok) throw new Error('Accounts fetch failed (' + res.status + '): ' + text);
+  const json = JSON.parse(text);
+  // Normalise: API may return { data: [...] } or { accounts: [...] } or [...]
+  return json.data || json.accounts || (Array.isArray(json) ? json : [json]);
 }
 
-// Step 2: Get a one-time WebSocket URL for a specific account
+// Get a one-time WebSocket URL for a specific account
 async function fetchOtpWsUrl(accountId) {
   const res = await fetch(
     API_BASE + '/trading/v1/options/accounts/' + accountId + '/otp',
@@ -492,19 +506,22 @@ async function fetchOtpWsUrl(accountId) {
       },
     }
   );
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error('OTP fetch failed (' + res.status + '): ' + err);
-  }
-  const json = await res.json();
-  // Response: { data: { url: "wss://api.derivws.com/trading/v1/options/ws/...?otp=..." } }
+  const text = await res.text();
+  addLog('[DEBUG] OTP raw: ' + text.slice(0, 300), 'info');
+  if (!res.ok) throw new Error('OTP fetch failed (' + res.status + '): ' + text);
+  const json = JSON.parse(text);
   const wsUrl = (json.data && json.data.url) || json.url;
-  if (!wsUrl) throw new Error('No WebSocket URL in OTP response');
+  if (!wsUrl) throw new Error('No WebSocket URL in OTP response: ' + text);
   return wsUrl;
 }
 
+// Detect demo vs real from the OTP WebSocket URL path
+function isDemoUrl(wsUrl) {
+  return wsUrl.includes('/ws/demo');
+}
+
 async function doConnect() {
-  if (!activeToken) { alert2('Please log in with Deriv first, then select an account.'); return; }
+  if (!activeToken) { alert2('Please log in with Deriv first.'); return; }
 
   initStake = parseFloat(g('cfgStake').value) || 0.35;
   mFactor   = parseFloat(g('cfgMF').value)    || 2.1;
@@ -514,6 +531,7 @@ async function doConnect() {
   addLog('Fetching accounts from Deriv…', 'info');
   refreshBtns();
 
+  // ── Fetch account list ──────────────────────────────────────────────────────
   let accounts;
   try {
     accounts = await fetchAccounts();
@@ -527,30 +545,34 @@ async function doConnect() {
 
   if (!accounts || accounts.length === 0) {
     dot('error'); lbl('DISCONNECTED');
-    addLog('No Options accounts found.', 'err');
-    alert2('No Options accounts found. Please create one on Deriv.');
+    addLog('No Options accounts found. Check the DEBUG line above for the raw response.', 'err');
+    alert2('No Options accounts found.');
     refreshBtns();
     return;
   }
 
-  // Populate the account selector with all accounts (demo + real)
-  oauthAccounts = accounts.map(a => ({
-    acct:      a.id || a.loginid || a.account_id,
-    token:     activeToken,
-    currency:  (a.currency || 'USD').toUpperCase(),
-    isVirtual: !!a.is_virtual,
-    balance:   a.balance,
-  }));
+  // Normalise account objects — log all keys so we can see the real field names
+  addLog('[DEBUG] First account keys: ' + Object.keys(accounts[0]).join(', '), 'info');
+
+  oauthAccounts = accounts.map(a => {
+    // Try every plausible field name for id, currency, virtual flag, balance
+    const id       = a.id || a.loginid || a.account_id || a.accountId || '?';
+    const cur      = (a.currency || a.cur || 'USD').toUpperCase();
+    const isVirt   = !!(a.is_virtual || a.isVirtual || a.demo || a.is_demo ||
+                        (typeof id === 'string' && id.toUpperCase().startsWith('VR')));
+    const bal      = a.balance != null ? parseFloat(a.balance) : null;
+    return { acct: id, token: activeToken, currency: cur, isVirtual: isVirt, balance: bal };
+  });
 
   g('oauthLoginSection').style.display = 'none';
   g('oauthAcctSection').style.display  = '';
   buildAcctSelector(oauthAccounts);
 
-  // Connect using the currently selected account
+  // ── Get OTP for selected account ─────────────────────────────────────────
   const idx     = parseInt(g('acctSelect').value) || 0;
   const selAcct = oauthAccounts[idx];
 
-  addLog('Fetching OTP WebSocket URL for account ' + selAcct.acct + '…', 'info');
+  addLog('Fetching OTP WebSocket URL for ' + selAcct.acct + '…', 'info');
   dot('connecting'); lbl('CONNECTING…');
 
   let wsUrl;
@@ -564,28 +586,38 @@ async function doConnect() {
     return;
   }
 
-  addLog('Connecting to Deriv WebSocket…', 'info');
+  // Confirm account type from URL path (most reliable source)
+  const isVirtualFromUrl = isDemoUrl(wsUrl);
+  selAcct.isVirtual = isVirtualFromUrl;
+  // Refresh badge now we know for sure
+  const badge = g('acctBadge');
+  badge.textContent = isVirtualFromUrl ? 'DEMO' : 'REAL';
+  badge.className   = 'acct-badge' + (isVirtualFromUrl ? ' virtual' : '');
+
+  addLog('Connecting to Deriv WebSocket (' + (isVirtualFromUrl ? 'DEMO' : 'REAL') + ')…', 'info');
   try { ws = new WebSocket(wsUrl); } catch (e) { alert2('Cannot open WebSocket: ' + e.message); return; }
 
   ws.onopen = () => {
     connected  = true;
-    authorized = true;   // OTP-authenticated connection is pre-authorized
+    authorized = true;
     currency   = selAcct.currency;
-    balance    = selAcct.balance || null;
+    if (selAcct.balance != null) { balance = selAcct.balance; }
     dot('connected'); lbl('CONNECTED');
-    addLog('✓ Connected & authorized: ' + selAcct.acct +
-           ' | ' + (selAcct.isVirtual ? 'DEMO' : 'REAL') +
+    addLog('✓ Connected: ' + selAcct.acct +
+           ' | ' + (isVirtualFromUrl ? 'DEMO' : 'REAL') +
            ' | ' + selAcct.currency, 'ok');
     updateKPIs();
     refreshBtns();
     lockCfg(true);
+    startPing();
     wsSend({ balance: 1, subscribe: 1 });
   };
 
   ws.onclose = (e) => {
     connected = false; authorized = false;
+    stopPing();
     dot('error'); lbl('DISCONNECTED');
-    addLog('WS closed (code ' + e.code + ').', 'err');
+    addLog('WS closed (code ' + e.code + (e.reason ? ' – ' + e.reason : '') + ').', 'err');
     if (botState === 'running' || botState === 'settling') setStatus('stopped');
     settling = false;
     lockCfg(false);
@@ -598,8 +630,14 @@ async function doConnect() {
   };
 
   ws.onmessage = (e) => {
-    try { dispatch(JSON.parse(e.data)); }
-    catch (ex) { console.error('WS parse error', ex); }
+    try {
+      const msg = JSON.parse(e.data);
+      // Log every message type we haven't explicitly handled so we can see what arrives
+      if (!['tick','balance','ping','proposal_open_contract'].includes(msg.msg_type)) {
+        addLog('[DEBUG] WS msg: ' + e.data.slice(0, 200), 'info');
+      }
+      dispatch(msg);
+    } catch (ex) { console.error('WS parse error', ex); }
   };
 
   refreshBtns();
@@ -609,6 +647,7 @@ function doDisconnect() {
   if (botState === 'running' || botState === 'settling') doStop();
   if (ws) { try { ws.close(); } catch(_){} ws = null; }
   connected = false; authorized = false;
+  stopPing();
   dot(''); lbl('DISCONNECTED');
   setStatus('idle');
   lockCfg(false);
@@ -637,6 +676,7 @@ function dispatch(msg) {
     case 'tick':                   onTick(msg);    break;
     case 'buy':                    onBuy(msg);     break;
     case 'proposal_open_contract': onPOC(msg);     break;
+    case 'ping':                   /* keepalive – ignore */ break;
     default: break;
   }
 }
@@ -679,7 +719,13 @@ function onAuth(msg) {
 
 // ─── BALANCE ──────────────────────────────────────────────────────────────────
 function onBal(msg) {
-  balance = parseFloat(msg.balance.balance);
+  // New API may return msg.balance.balance (legacy shape) or msg.balance directly
+  const b = msg.balance;
+  if (!b) return;
+  const raw = b.balance != null ? b.balance : b.amount != null ? b.amount : b;
+  if (raw == null || isNaN(parseFloat(raw))) return;
+  balance = parseFloat(raw);
+  if (b.currency) currency = b.currency;
   if (startBal !== null) {
     const dd = Math.max(0, startBal - balance);
     if (dd > maxDD) maxDD = dd;
