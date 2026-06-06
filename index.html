@@ -306,9 +306,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const APP_ID         = '3386rHtrRkbWFzxo0gwdh';
 const REDIRECT_URI   = 'https://skimotho.github.io/oddeven/';
-const WS_URL         = 'wss://ws.derivws.com/websockets/v3?app_id=' + APP_ID;
 const AUTH_ENDPOINT  = 'https://auth.deriv.com/oauth2/auth';
 const TOKEN_ENDPOINT = 'https://auth.deriv.com/oauth2/token';
+const API_BASE       = 'https://api.derivws.com';
 const SYMBOL    = '1HZ10V';
 const NCYCLE    = 7;   // ticks per cycle
 
@@ -462,23 +462,124 @@ function onAcctChange() {
 }
 
 // ─── WEBSOCKET ────────────────────────────────────────────────────────────────
-function doConnect() {
+
+// Step 1: Fetch all accounts (demo + real) from REST API
+async function fetchAccounts() {
+  const res = await fetch(API_BASE + '/trading/v1/options/accounts', {
+    headers: {
+      'Authorization': 'Bearer ' + activeToken,
+      'Deriv-App-ID':  APP_ID,
+    },
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('Accounts fetch failed (' + res.status + '): ' + err);
+  }
+  const json = await res.json();
+  // Response: { data: [ { id, currency, is_virtual, balance, ... }, ... ] }
+  return json.data || json.accounts || json;
+}
+
+// Step 2: Get a one-time WebSocket URL for a specific account
+async function fetchOtpWsUrl(accountId) {
+  const res = await fetch(
+    API_BASE + '/trading/v1/options/accounts/' + accountId + '/otp',
+    {
+      method:  'POST',
+      headers: {
+        'Authorization': 'Bearer ' + activeToken,
+        'Deriv-App-ID':  APP_ID,
+      },
+    }
+  );
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('OTP fetch failed (' + res.status + '): ' + err);
+  }
+  const json = await res.json();
+  // Response: { data: { url: "wss://api.derivws.com/trading/v1/options/ws/...?otp=..." } }
+  const wsUrl = (json.data && json.data.url) || json.url;
+  if (!wsUrl) throw new Error('No WebSocket URL in OTP response');
+  return wsUrl;
+}
+
+async function doConnect() {
   if (!activeToken) { alert2('Please log in with Deriv first, then select an account.'); return; }
 
   initStake = parseFloat(g('cfgStake').value) || 0.35;
   mFactor   = parseFloat(g('cfgMF').value)    || 2.1;
 
   hideAlert();
-  dot('connecting'); lbl('CONNECTING…');
-  addLog('Connecting to Deriv WebSocket…', 'info');
+  dot('connecting'); lbl('FETCHING ACCOUNTS…');
+  addLog('Fetching accounts from Deriv…', 'info');
+  refreshBtns();
 
-  try { ws = new WebSocket(WS_URL); } catch(e) { alert2('Cannot open WebSocket: ' + e.message); return; }
+  let accounts;
+  try {
+    accounts = await fetchAccounts();
+  } catch (err) {
+    dot('error'); lbl('DISCONNECTED');
+    addLog('Account fetch error: ' + err.message, 'err');
+    alert2('Could not load accounts: ' + err.message);
+    refreshBtns();
+    return;
+  }
+
+  if (!accounts || accounts.length === 0) {
+    dot('error'); lbl('DISCONNECTED');
+    addLog('No Options accounts found.', 'err');
+    alert2('No Options accounts found. Please create one on Deriv.');
+    refreshBtns();
+    return;
+  }
+
+  // Populate the account selector with all accounts (demo + real)
+  oauthAccounts = accounts.map(a => ({
+    acct:      a.id || a.loginid || a.account_id,
+    token:     activeToken,
+    currency:  (a.currency || 'USD').toUpperCase(),
+    isVirtual: !!a.is_virtual,
+    balance:   a.balance,
+  }));
+
+  g('oauthLoginSection').style.display = 'none';
+  g('oauthAcctSection').style.display  = '';
+  buildAcctSelector(oauthAccounts);
+
+  // Connect using the currently selected account
+  const idx     = parseInt(g('acctSelect').value) || 0;
+  const selAcct = oauthAccounts[idx];
+
+  addLog('Fetching OTP WebSocket URL for account ' + selAcct.acct + '…', 'info');
+  dot('connecting'); lbl('CONNECTING…');
+
+  let wsUrl;
+  try {
+    wsUrl = await fetchOtpWsUrl(selAcct.acct);
+  } catch (err) {
+    dot('error'); lbl('DISCONNECTED');
+    addLog('OTP error: ' + err.message, 'err');
+    alert2('WebSocket setup failed: ' + err.message);
+    refreshBtns();
+    return;
+  }
+
+  addLog('Connecting to Deriv WebSocket…', 'info');
+  try { ws = new WebSocket(wsUrl); } catch (e) { alert2('Cannot open WebSocket: ' + e.message); return; }
 
   ws.onopen = () => {
-    connected = true;
+    connected  = true;
+    authorized = true;   // OTP-authenticated connection is pre-authorized
+    currency   = selAcct.currency;
+    balance    = selAcct.balance || null;
     dot('connected'); lbl('CONNECTED');
-    addLog('WebSocket open. Authorizing with OAuth token…', 'info');
-    wsSend({ authorize: activeToken });
+    addLog('✓ Connected & authorized: ' + selAcct.acct +
+           ' | ' + (selAcct.isVirtual ? 'DEMO' : 'REAL') +
+           ' | ' + selAcct.currency, 'ok');
+    updateKPIs();
+    refreshBtns();
+    lockCfg(true);
+    wsSend({ balance: 1, subscribe: 1 });
   };
 
   ws.onclose = (e) => {
@@ -487,6 +588,7 @@ function doConnect() {
     addLog('WS closed (code ' + e.code + ').', 'err');
     if (botState === 'running' || botState === 'settling') setStatus('stopped');
     settling = false;
+    lockCfg(false);
     refreshBtns();
   };
 
@@ -497,7 +599,7 @@ function doConnect() {
 
   ws.onmessage = (e) => {
     try { dispatch(JSON.parse(e.data)); }
-    catch(ex) { console.error('WS parse error', ex); }
+    catch (ex) { console.error('WS parse error', ex); }
   };
 
   refreshBtns();
@@ -509,6 +611,7 @@ function doDisconnect() {
   connected = false; authorized = false;
   dot(''); lbl('DISCONNECTED');
   setStatus('idle');
+  lockCfg(false);
   refreshBtns();
   addLog('Disconnected.', 'warn');
 }
@@ -561,29 +664,17 @@ function onError(msg) {
 }
 
 // ─── AUTHORIZE ────────────────────────────────────────────────────────────────
+// With OTP-based WebSocket, authorization is implicit on connect.
+// This handler is kept for safety in case a legacy authorize response arrives.
 function onAuth(msg) {
+  if (!msg.authorize) return;
   authorized = true;
   const auth = msg.authorize;
-  balance    = parseFloat(auth.balance);
-  currency   = auth.currency || currency;
-
-  // Populate account selector from the authorize response account_list
-  if (auth.account_list && auth.account_list.length > 0) {
-    oauthAccounts = auth.account_list.map(a => ({
-      acct:      a.loginid,
-      token:     activeToken,   // same Bearer token for all accounts
-      currency:  a.currency || 'USD',
-      isVirtual: !!a.is_virtual,
-    }));
-    g('oauthLoginSection').style.display = 'none';
-    g('oauthAcctSection').style.display  = '';
-    buildAcctSelector(oauthAccounts);
-  }
-
-  addLog(`✓ Authorized: ${auth.loginid} | Bal: ${balance.toFixed(2)} ${currency}`, 'ok');
+  if (auth.balance) balance = parseFloat(auth.balance);
+  if (auth.currency) currency = auth.currency;
+  addLog(`✓ Authorized: ${auth.loginid} | Bal: ${balance != null ? balance.toFixed(2) : '—'} ${currency}`, 'ok');
   updateKPIs();
   refreshBtns();
-  wsSend({ balance: 1, subscribe: 1 });   // live balance stream
 }
 
 // ─── BALANCE ──────────────────────────────────────────────────────────────────
