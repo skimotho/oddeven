@@ -121,10 +121,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 .sbadge.settling{background:#00d4ff14;color:var(--accent);border:1px solid var(--accent)}
 .sbadge.stopped {background:#ff174414;color:var(--red);border:1px solid var(--red)}
 
-/* LOG */
-#log{background:#040b12;border:1px solid var(--border);border-radius:10px;padding:12px 14px;height:230px;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.8}
-#log::-webkit-scrollbar{width:4px}
-#log::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+/* LOG PANEL */
+.log-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+@media(max-width:700px){.log-grid{grid-template-columns:1fr}}
+#log,#histLog{background:#040b12;border:1px solid var(--border);border-radius:10px;padding:12px 14px;height:260px;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.8}
+#log::-webkit-scrollbar,#histLog::-webkit-scrollbar{width:4px}
+#log::-webkit-scrollbar-thumb,#histLog::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 .ll{display:flex;gap:10px}
 .lt{color:var(--muted);flex-shrink:0}
 .lm{color:var(--text)} .lm.ok{color:var(--green)} .lm.err{color:var(--red)} .lm.warn{color:var(--yellow)} .lm.info{color:var(--accent)}
@@ -306,13 +308,22 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
   </div>
 </div>
 
-<!-- LOG -->
-<div class="card">
-  <div class="card-title" style="justify-content:space-between">
-    <span style="letter-spacing:3px">Activity Log</span>
-    <button onclick="document.getElementById('log').innerHTML=''" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;letter-spacing:1px">CLEAR</button>
+<!-- LOGS: Activity + History -->
+<div class="log-grid">
+  <div class="card" style="margin-bottom:0">
+    <div class="card-title" style="justify-content:space-between">
+      <span style="letter-spacing:3px">Activity Log</span>
+      <button onclick="document.getElementById('log').innerHTML=''" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;letter-spacing:1px">CLEAR</button>
+    </div>
+    <div id="log"></div>
   </div>
-  <div id="log"></div>
+  <div class="card" style="margin-bottom:0">
+    <div class="card-title" style="justify-content:space-between">
+      <span style="letter-spacing:3px">Trade History</span>
+      <button onclick="document.getElementById('histLog').innerHTML=''" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;letter-spacing:1px">CLEAR</button>
+    </div>
+    <div id="histLog"></div>
+  </div>
 </div>
 
 </div><!-- /wrap -->
@@ -632,6 +643,7 @@ async function doConnect() {
     lockCfg(true);
     startPing();
     wsSend({ balance: 1, subscribe: 1 });
+    wsSend({ transaction: 1, subscribe: 1 });   // real-time settlement via transaction stream
   };
 
   ws.onclose = (e) => {
@@ -653,8 +665,7 @@ async function doConnect() {
   ws.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
-      // Log every message type we haven't explicitly handled so we can see what arrives
-      if (!['tick','balance','ping','proposal_open_contract'].includes(msg.msg_type)) {
+      if (!['tick','balance','ping','proposal_open_contract','transaction'].includes(msg.msg_type)) {
         addLog('[DEBUG] WS msg: ' + e.data.slice(0, 200), 'info');
       }
       dispatch(msg);
@@ -692,11 +703,12 @@ function wsSend(obj) {
 function dispatch(msg) {
   if (msg.error) { onError(msg); return; }
   switch (msg.msg_type) {
-    case 'authorize':              onAuth(msg);    break;
-    case 'balance':                onBal(msg);     break;
-    case 'tick':                   onTick(msg);    break;
-    case 'buy':                    onBuy(msg);     break;
-    case 'proposal_open_contract': onPOC(msg);     break;
+    case 'authorize':              onAuth(msg);        break;
+    case 'balance':                onBal(msg);         break;
+    case 'tick':                   onTick(msg);        break;
+    case 'buy':                    onBuy(msg);         break;
+    case 'transaction':            onTransaction(msg); break;
+    case 'proposal_open_contract': onPOC(msg);         break;
     case 'ping':                   /* keepalive – ignore */ break;
     default: break;
   }
@@ -784,32 +796,80 @@ function onBuy(msg) {
   if (cb) { delete buyCbs[rid]; cb(msg.buy.contract_id, msg.buy); }
 }
 
-// ─── PROPOSAL OPEN CONTRACT (settlement) ──────────────────────────────────────
-function onPOC(msg) {
-  const poc = msg.proposal_open_contract;
-  if (!poc) return;
+// ─── TRANSACTION STREAM (primary settlement path) ─────────────────────────────
+// The new OTP WebSocket does not reliably push proposal_open_contract events.
+// Instead we subscribe to the transaction stream. Every contract settlement
+// fires an action_type="sell" transaction containing the contract_id and the
+// payout amount received (0 if lost, full payout if won).
+let _txDebugCount = 0;
+function onTransaction(msg) {
+  const tx = msg.transaction;
+  if (!tx) return;
 
-  // Track subscription_id so we can forget it later
-  if (poc.id) pocSubs[poc.contract_id] = poc.id;
+  // Log the first 3 raw transactions so we can confirm field names in the live environment
+  if (_txDebugCount < 3) {
+    addLog('[TX DEBUG] ' + JSON.stringify(tx).slice(0, 250), 'info');
+    _txDebugCount++;
+  }
 
-  // is_sold can arrive as boolean true OR integer 1 — treat both as settled
-  const isSold = poc.is_sold === true || poc.is_sold === 1;
-  if (!isSold) return;
+  // Deriv sends action_type: "sell" when a contract settles (auto-sold at expiry)
+  // Some API versions may use tx.action — handle both defensively
+  const action = tx.action_type || tx.action || '';
+  if (action !== 'sell') return;
 
-  const cid    = poc.contract_id;
-  const profit = parseFloat((poc.profit || 0).toFixed(2));
-  const won    = profit > 0;
+  const cid = tx.contract_id;
+  if (!cid) return;
 
   let side = null;
   if      (pOdd  && pOdd.cid  === cid) side = 'ODD';
   else if (pEven && pEven.cid === cid) side = 'EVEN';
-  if (!side) return;   // stale / unknown contract
+  if (!side) return;   // not one of our current contracts
 
-  // Forget this subscription immediately
-  if (pocSubs[cid]) {
-    wsSend({ forget: pocSubs[cid] });
-    delete pocSubs[cid];
-  }
+  // tx.amount = payout credited to account on settlement.
+  // Positive = received payout (win). 0 or absent = no payout (loss).
+  const stake  = side === 'ODD' ? pOdd.stake : pEven.stake;
+  const payout = parseFloat(tx.amount || 0);
+  // profit = payout received minus what we paid (stake)
+  const profit = parseFloat((payout > 0 ? payout - stake : -stake).toFixed(2));
+  const won    = payout > 0;
+
+  settleContract(side, stake, profit, won, cid);
+}
+
+// ─── PROPOSAL OPEN CONTRACT (secondary / legacy fallback) ─────────────────────
+function onPOC(msg) {
+  const poc = msg.proposal_open_contract;
+  if (!poc) return;
+  if (poc.id) pocSubs[poc.contract_id] = poc.id;
+
+  const isSold = poc.is_sold === true || poc.is_sold === 1;
+  if (!isSold) return;
+
+  const cid = poc.contract_id;
+
+  // Skip if already handled by onTransaction
+  let side = null;
+  if      (pOdd  && pOdd.cid  === cid) side = 'ODD';
+  else if (pEven && pEven.cid === cid) side = 'EVEN';
+  if (!side) return;
+
+  if (pocSubs[cid]) { wsSend({ forget: pocSubs[cid] }); delete pocSubs[cid]; }
+
+  const stake  = side === 'ODD' ? pOdd.stake : pEven.stake;
+  const profit = parseFloat((poc.profit || 0).toFixed(2));
+  const won    = profit > 0;
+
+  settleContract(side, stake, profit, won, cid);
+}
+
+// ─── SHARED SETTLEMENT LOGIC ──────────────────────────────────────────────────
+// Deduplicated via a settled-contract ID set so onTransaction + onPOC can't
+// double-count if both happen to fire.
+const settledCids = new Set();
+
+function settleContract(side, stake, profit, won, cid) {
+  if (settledCids.has(cid)) return;   // already processed
+  settledCids.add(cid);
 
   totalPL = parseFloat((totalPL + profit).toFixed(2));
 
@@ -818,20 +878,24 @@ function onPOC(msg) {
       oddW++; wins++;
       oddList = [];
       addLog(`✓ ODD WIN   profit=+${profit.toFixed(2)} ${currency}`, 'ok');
+      addHistory('ODD', 'WIN', stake, profit);
     } else {
       oddL++; losses++;
-      oddList.push(pOdd.stake);
-      addLog(`✗ ODD LOSS  stake=${pOdd.stake.toFixed(2)}  net=${profit.toFixed(2)} ${currency}`, 'err');
+      oddList.push(stake);
+      addLog(`✗ ODD LOSS  stake=${stake.toFixed(2)}  net=${profit.toFixed(2)} ${currency}`, 'err');
+      addHistory('ODD', 'LOSS', stake, profit);
     }
   } else {
     if (won) {
       evenW++; wins++;
       evenList = [];
       addLog(`✓ EVEN WIN  profit=+${profit.toFixed(2)} ${currency}`, 'ok');
+      addHistory('EVEN', 'WIN', stake, profit);
     } else {
       evenL++; losses++;
-      evenList.push(pEven.stake);
-      addLog(`✗ EVEN LOSS stake=${pEven.stake.toFixed(2)}  net=${profit.toFixed(2)} ${currency}`, 'err');
+      evenList.push(stake);
+      addLog(`✗ EVEN LOSS stake=${stake.toFixed(2)}  net=${profit.toFixed(2)} ${currency}`, 'err');
+      addHistory('EVEN', 'LOSS', stake, profit);
     }
   }
 
@@ -850,14 +914,12 @@ function onPOC(msg) {
     if (totalPL >= tpTarget) {
       addLog(`🎯 TAKE PROFIT reached (+${totalPL.toFixed(2)} ${currency}). Bot stopped.`, 'ok');
       alert2(`Take Profit reached! Net P&L: +${totalPL.toFixed(2)} ${currency}`, 'ok');
-      doStop();
-      return;
+      doStop(); return;
     }
     if (totalPL <= -Math.abs(slTarget)) {
       addLog(`🛑 STOP LOSS reached (${totalPL.toFixed(2)} ${currency}). Bot stopped.`, 'err');
       alert2(`Stop Loss reached! Net P&L: ${totalPL.toFixed(2)} ${currency}`);
-      doStop();
-      return;
+      doStop(); return;
     }
 
     if (botState === 'settling') {
@@ -912,6 +974,7 @@ function executeCycle() {
   settled  = 0;
   pOdd     = null;
   pEven    = null;
+  settledCids.clear();   // reset dedup for this cycle
 
   setStatus('settling');
   refreshBtns();
@@ -923,7 +986,7 @@ function executeCycle() {
     pOdd = { cid, stake: os };
     g('oddPending').textContent = '⏳';
     addLog(`✓ DIGITODD  bought #${cid}`, 'ok');
-    wsSend({ proposal_open_contract: 1, contract_id: cid, subscribe: 1 });
+    // No proposal_open_contract subscribe needed — transaction stream handles settlement
   };
   wsSendBuy('DIGITODD', os, ridOdd);
 
@@ -933,43 +996,26 @@ function executeCycle() {
     pEven = { cid, stake: es };
     g('evenPending').textContent = '⏳';
     addLog(`✓ DIGITEVEN bought #${cid}`, 'ok');
-    wsSend({ proposal_open_contract: 1, contract_id: cid, subscribe: 1 });
+    // No proposal_open_contract subscribe needed — transaction stream handles settlement
   };
   wsSendBuy('DIGITEVEN', es, ridEven);
 
   // ── Settlement timeout failsafe (10 s) ──────────────────────────────────
-  // If the API never fires is_sold for one/both contracts, unstick the bot.
+  // If the transaction stream never fires for one/both contracts, unstick the bot.
+  const cycleSnapshot = cycleCount;
   setTimeout(() => {
-    if (!settling) return;   // already resolved normally
+    if (!settling || cycleCount !== cycleSnapshot) return;  // already resolved
     addLog('⚠ Settlement timeout — forcing cycle resolution.', 'warn');
 
-    // Credit any side that never reported back as a loss (unknown outcome → loss)
-    if (settled < 1 && pOdd) {
-      // ODD never settled — count as loss
-      oddL++; losses++;
-      oddList.push(pOdd.stake);
-      totalPL = parseFloat((totalPL - pOdd.stake).toFixed(2));
-      addLog(`⚠ ODD timeout — recorded as loss (stake=${pOdd.stake.toFixed(2)})`, 'warn');
+    // For each unsettled side, record a loss via the shared settlement path
+    if (pOdd && !settledCids.has(pOdd.cid)) {
+      addLog(`⚠ ODD timeout — recording as loss (stake=${pOdd.stake.toFixed(2)})`, 'warn');
+      settleContract('ODD', pOdd.stake, -pOdd.stake, false, pOdd.cid);
     }
-    if (settled < 2 && pEven && settled < (pOdd ? 2 : 1)) {
-      // EVEN never settled — count as loss
-      evenL++; losses++;
-      evenList.push(pEven.stake);
-      totalPL = parseFloat((totalPL - pEven.stake).toFixed(2));
-      addLog(`⚠ EVEN timeout — recorded as loss (stake=${pEven.stake.toFixed(2)})`, 'warn');
+    if (pEven && !settledCids.has(pEven.cid)) {
+      addLog(`⚠ EVEN timeout — recording as loss (stake=${pEven.stake.toFixed(2)})`, 'warn');
+      settleContract('EVEN', pEven.stake, -pEven.stake, false, pEven.cid);
     }
-
-    rebalance();
-    updateSides();
-    updateKPIs();
-    settling = false;
-    g('oddPending').textContent  = '';
-    g('evenPending').textContent = '';
-    if (botState === 'settling') {
-      setStatus('running');
-      addLog('Timeout recovery complete. Resuming…', 'info');
-    }
-    refreshBtns();
   }, 10000);
 }
 
@@ -1004,6 +1050,7 @@ function doStart() {
   totalPL = 0; maxDD = 0;
   settling = false; settled = 0;
   pOdd = null; pEven = null;
+  settledCids.clear();
   startBal = balance;
 
   // Re-read config (fields are locked but values still readable)
@@ -1099,6 +1146,27 @@ function addLog(msg, cls = '') {
   const line = document.createElement('div');
   line.className = 'll';
   line.innerHTML = `<span class="lt">${t}</span><span class="lm ${cls}">${msg}</span>`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+  while (box.children.length > 400) box.removeChild(box.firstChild);
+}
+
+function addHistory(side, result, stake, profit) {
+  const box  = g('histLog');
+  const t    = new Date().toTimeString().slice(0, 8);
+  const cls  = result === 'WIN' ? 'ok' : 'err';
+  const sign = profit >= 0 ? '+' : '';
+  const sideColor = side === 'ODD' ? 'var(--accent)' : 'var(--accent2)';
+  const line = document.createElement('div');
+  line.className = 'll';
+  line.innerHTML =
+    `<span class="lt">${t}</span>` +
+    `<span class="lm ${cls}">` +
+    `<span style="color:${sideColor};min-width:36px;display:inline-block">${side}</span> ` +
+    `${result} ` +
+    `<span style="color:var(--muted)">stake=${stake.toFixed(2)}</span> ` +
+    `<span style="${profit>=0?'color:var(--green)':'color:var(--red)'}">${sign}${profit.toFixed(2)} ${currency}</span>` +
+    `</span>`;
   box.appendChild(line);
   box.scrollTop = box.scrollHeight;
   while (box.children.length > 400) box.removeChild(box.firstChild);
