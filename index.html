@@ -304,9 +304,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 'use strict';
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const APP_ID    = '3386rHtrRkbWFzxo0gwdh';
-const WS_URL    = 'wss://ws.derivws.com/websockets/v3?app_id=' + APP_ID;
-const OAUTH_URL = 'https://oauth.deriv.com/oauth2/authorize?app_id=' + APP_ID;
+const APP_ID       = '3386rHtrRkbWFzxo0gwdh';
+const REDIRECT_URI = 'https://skimotho.github.io/oddeven/';
+const WS_URL       = 'wss://ws.derivws.com/websockets/v3?app_id=' + APP_ID;
+const OAUTH_URL    = 'https://oauth.deriv.com/oauth2/authorize?app_id=' + APP_ID
+                   + '&redirect_uri=' + encodeURIComponent(REDIRECT_URI);
 const SYMBOL    = '1HZ10V';
 const NCYCLE    = 7;   // ticks per cycle
 
@@ -879,8 +881,7 @@ function initOAuth() {
     buildAcctSelector(accounts);
 
     // Clean the OAuth params from the URL so a refresh doesn't re-trigger
-    const clean = window.location.pathname;
-    window.history.replaceState({}, document.title, clean);
+    window.history.replaceState({}, document.title, REDIRECT_URI);
 
     addLog('OAuth successful — ' + accounts.length + ' account(s) found. Select one and click CONNECT.', 'ok');
     alert2('Logged in via Deriv OAuth. Select an account and click CONNECT.', 'ok');
