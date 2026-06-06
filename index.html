@@ -192,6 +192,14 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
     <div class="kpi-val" id="kCycles">0</div>
   </div>
   <div class="kpi">
+    <div class="kpi-label">Take Profit</div>
+    <div class="kpi-val" style="color:var(--green)" id="kTP">15000.00</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Stop Loss</div>
+    <div class="kpi-val" style="color:var(--red)" id="kSL">50000.00</div>
+  </div>
+  <div class="kpi">
     <div class="kpi-label">Status</div>
     <div style="margin-top:4px"><span class="sbadge idle" id="sBadge">IDLE</span></div>
   </div>
@@ -262,7 +270,15 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
         </div>
         <div class="field">
           <label>Martingale Factor</label>
-          <input type="number" id="cfgMF" value="2.1" min="1.01" step="0.1"/>
+          <input type="number" id="cfgMF" value="1.3" min="1.01" step="0.01"/>
+        </div>
+        <div class="field">
+          <label>Take Profit (P&amp;L)</label>
+          <input type="number" id="cfgTP" value="15000" min="0" step="1"/>
+        </div>
+        <div class="field">
+          <label>Stop Loss (P&amp;L)</label>
+          <input type="number" id="cfgSL" value="50000" min="0" step="1"/>
         </div>
       </div>
 
@@ -322,7 +338,9 @@ let botState    = 'idle';
 
 let currency    = 'USD';
 let initStake   = 0.35;
-let mFactor     = 2.1;
+let mFactor     = 1.3;
+let tpTarget    = 15000;   // Take Profit threshold (total P&L)
+let slTarget    = 50000;   // Stop Loss threshold  (total P&L, compared as negative)
 
 let balance     = null;
 let startBal    = null;
@@ -346,6 +364,9 @@ let pEven       = null;
 
 // req_id → callback(contractId)
 const buyCbs    = {};
+
+// contract_id → subscription_id (for forget after settlement)
+const pocSubs   = {};
 
 // monotone req_id
 let _rid        = 1;
@@ -524,7 +545,7 @@ async function doConnect() {
   if (!activeToken) { alert2('Please log in with Deriv first.'); return; }
 
   initStake = parseFloat(g('cfgStake').value) || 0.35;
-  mFactor   = parseFloat(g('cfgMF').value)    || 2.1;
+  mFactor   = parseFloat(g('cfgMF').value)    || 1.3;
 
   hideAlert();
   dot('connecting'); lbl('FETCHING ACCOUNTS…');
@@ -757,7 +778,8 @@ function onTick(msg) {
 
 // ─── BUY RESPONSE ─────────────────────────────────────────────────────────────
 function onBuy(msg) {
-  const rid = msg.echo_req && msg.echo_req.req_id;
+  // req_id can live at msg.req_id or msg.echo_req.req_id
+  const rid = (msg.echo_req && msg.echo_req.req_id) || msg.req_id;
   const cb  = buyCbs[rid];
   if (cb) { delete buyCbs[rid]; cb(msg.buy.contract_id, msg.buy); }
 }
@@ -765,9 +787,14 @@ function onBuy(msg) {
 // ─── PROPOSAL OPEN CONTRACT (settlement) ──────────────────────────────────────
 function onPOC(msg) {
   const poc = msg.proposal_open_contract;
+  if (!poc) return;
 
-  // Ignore interim (unsold) updates
-  if (!poc.is_sold) return;
+  // Track subscription_id so we can forget it later
+  if (poc.id) pocSubs[poc.contract_id] = poc.id;
+
+  // is_sold can arrive as boolean true OR integer 1 — treat both as settled
+  const isSold = poc.is_sold === true || poc.is_sold === 1;
+  if (!isSold) return;
 
   const cid    = poc.contract_id;
   const profit = parseFloat((poc.profit || 0).toFixed(2));
@@ -777,6 +804,12 @@ function onPOC(msg) {
   if      (pOdd  && pOdd.cid  === cid) side = 'ODD';
   else if (pEven && pEven.cid === cid) side = 'EVEN';
   if (!side) return;   // stale / unknown contract
+
+  // Forget this subscription immediately
+  if (pocSubs[cid]) {
+    wsSend({ forget: pocSubs[cid] });
+    delete pocSubs[cid];
+  }
 
   totalPL = parseFloat((totalPL + profit).toFixed(2));
 
@@ -812,6 +845,20 @@ function onPOC(msg) {
     settling = false;
     g('oddPending').textContent  = '';
     g('evenPending').textContent = '';
+
+    // ── TP / SL check ──────────────────────────────────────────────────────
+    if (totalPL >= tpTarget) {
+      addLog(`🎯 TAKE PROFIT reached (+${totalPL.toFixed(2)} ${currency}). Bot stopped.`, 'ok');
+      alert2(`Take Profit reached! Net P&L: +${totalPL.toFixed(2)} ${currency}`, 'ok');
+      doStop();
+      return;
+    }
+    if (totalPL <= -Math.abs(slTarget)) {
+      addLog(`🛑 STOP LOSS reached (${totalPL.toFixed(2)} ${currency}). Bot stopped.`, 'err');
+      alert2(`Stop Loss reached! Net P&L: ${totalPL.toFixed(2)} ${currency}`);
+      doStop();
+      return;
+    }
 
     if (botState === 'settling') {
       setStatus('running');
@@ -872,27 +919,58 @@ function executeCycle() {
 
   // ── Buy DIGITODD ──
   const ridOdd = nextRid();
-  buyCbs[ridOdd] = (cid, buyInfo) => {
+  buyCbs[ridOdd] = (cid) => {
     pOdd = { cid, stake: os };
     g('oddPending').textContent = '⏳';
     addLog(`✓ DIGITODD  bought #${cid}`, 'ok');
-    // Subscribe to contract settlement
     wsSend({ proposal_open_contract: 1, contract_id: cid, subscribe: 1 });
   };
   wsSendBuy('DIGITODD', os, ridOdd);
 
-  // ── Buy DIGITEVEN (slight delay to avoid req_id ambiguity) ──
+  // ── Buy DIGITEVEN immediately (no delay — req_id is pre-allocated) ──
+  const ridEven = nextRid();
+  buyCbs[ridEven] = (cid) => {
+    pEven = { cid, stake: es };
+    g('evenPending').textContent = '⏳';
+    addLog(`✓ DIGITEVEN bought #${cid}`, 'ok');
+    wsSend({ proposal_open_contract: 1, contract_id: cid, subscribe: 1 });
+  };
+  wsSendBuy('DIGITEVEN', es, ridEven);
+
+  // ── Settlement timeout failsafe (10 s) ──────────────────────────────────
+  // If the API never fires is_sold for one/both contracts, unstick the bot.
   setTimeout(() => {
-    if (!settling) return;  // bot was stopped in the meantime
-    const ridEven = nextRid();
-    buyCbs[ridEven] = (cid, buyInfo) => {
-      pEven = { cid, stake: es };
-      g('evenPending').textContent = '⏳';
-      addLog(`✓ DIGITEVEN bought #${cid}`, 'ok');
-      wsSend({ proposal_open_contract: 1, contract_id: cid, subscribe: 1 });
-    };
-    wsSendBuy('DIGITEVEN', es, ridEven);
-  }, 200);
+    if (!settling) return;   // already resolved normally
+    addLog('⚠ Settlement timeout — forcing cycle resolution.', 'warn');
+
+    // Credit any side that never reported back as a loss (unknown outcome → loss)
+    if (settled < 1 && pOdd) {
+      // ODD never settled — count as loss
+      oddL++; losses++;
+      oddList.push(pOdd.stake);
+      totalPL = parseFloat((totalPL - pOdd.stake).toFixed(2));
+      addLog(`⚠ ODD timeout — recorded as loss (stake=${pOdd.stake.toFixed(2)})`, 'warn');
+    }
+    if (settled < 2 && pEven && settled < (pOdd ? 2 : 1)) {
+      // EVEN never settled — count as loss
+      evenL++; losses++;
+      evenList.push(pEven.stake);
+      totalPL = parseFloat((totalPL - pEven.stake).toFixed(2));
+      addLog(`⚠ EVEN timeout — recorded as loss (stake=${pEven.stake.toFixed(2)})`, 'warn');
+    }
+
+    rebalance();
+    updateSides();
+    updateKPIs();
+    settling = false;
+    g('oddPending').textContent  = '';
+    g('evenPending').textContent = '';
+    if (botState === 'settling') {
+      setStatus('running');
+      addLog('Timeout recovery complete. Resuming…', 'info');
+    }
+    refreshBtns();
+  }, 10000);
 }
 
 // Low-level buy sender — uses the pre-allocated rid so buyCbs[rid] works
@@ -930,7 +1008,9 @@ function doStart() {
 
   // Re-read config (fields are locked but values still readable)
   initStake = parseFloat(g('cfgStake').value) || 0.35;
-  mFactor   = parseFloat(g('cfgMF').value)    || 2.1;
+  mFactor   = parseFloat(g('cfgMF').value)    || 1.3;
+  tpTarget  = parseFloat(g('cfgTP').value)    || 15000;
+  slTarget  = parseFloat(g('cfgSL').value)    || 50000;
 
   hideAlert();
   updateSides();
@@ -1002,7 +1082,7 @@ function refreshBtns() {
 }
 
 function lockCfg(lock) {
-  ['cfgStake','cfgMF'].forEach(id => { g(id).disabled = lock; });
+  ['cfgStake','cfgMF','cfgTP','cfgSL'].forEach(id => { g(id).disabled = lock; });
 }
 
 function alert2(msg, type = 'error') {
@@ -1067,6 +1147,8 @@ function updateKPIs() {
   g('kDD').textContent     = maxDD.toFixed(2);
   g('kWL').textContent     = `${wins} / ${losses}`;
   g('kCycles').textContent = cycleCount;
+  g('kTP').textContent     = tpTarget.toFixed(2);
+  g('kSL').textContent     = slTarget.toFixed(2);
   if (balance !== null)
     g('kBalance').textContent = `${balance.toFixed(2)} ${currency}`;
 }
