@@ -304,11 +304,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 'use strict';
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const APP_ID       = '3386rHtrRkbWFzxo0gwdh';
-const REDIRECT_URI = 'https://skimotho.github.io/oddeven/';
-const WS_URL       = 'wss://ws.derivws.com/websockets/v3?app_id=' + APP_ID;
-const OAUTH_URL    = 'https://oauth.deriv.com/oauth2/authorize?app_id=' + APP_ID
-                   + '&redirect_uri=' + encodeURIComponent(REDIRECT_URI);
+const APP_ID         = '3386rHtrRkbWFzxo0gwdh';
+const REDIRECT_URI   = 'https://skimotho.github.io/oddeven/';
+const WS_URL         = 'wss://ws.derivws.com/websockets/v3?app_id=' + APP_ID;
+const AUTH_ENDPOINT  = 'https://auth.deriv.com/oauth2/auth';
+const TOKEN_ENDPOINT = 'https://auth.deriv.com/oauth2/token';
 const SYMBOL    = '1HZ10V';
 const NCYCLE    = 7;   // ticks per cycle
 
@@ -356,33 +356,82 @@ const nextRid   = () => _rid++;
 let oauthAccounts = [];
 let activeToken   = null;
 
-// ─── OAUTH FLOW ───────────────────────────────────────────────────────────────
-function doOAuthLogin(e) {
-  e.preventDefault();
-  // Redirect user to Deriv OAuth login page
-  window.location.href = OAUTH_URL;
+// ─── OAUTH 2.0 + PKCE FLOW (new Deriv platform) ──────────────────────────────
+
+// Generate a cryptographically random code_verifier
+function generateCodeVerifier() {
+  const array = crypto.getRandomValues(new Uint8Array(64));
+  return Array.from(array)
+    .map(v => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'[v % 66])
+    .join('');
 }
 
-// Parse acct1/token1/cur1 … from URL query params after OAuth redirect
-function parseOAuthCallback() {
-  const params = new URLSearchParams(window.location.search);
-  const accounts = [];
-  let i = 1;
-  while (params.has('acct' + i)) {
-    const acct  = params.get('acct' + i);
-    const token = params.get('token' + i);
-    const cur   = (params.get('cur' + i) || 'USD').toUpperCase();
-    if (acct && token) {
-      accounts.push({
-        acct,
-        token,
-        currency: cur,
-        isVirtual: acct.toUpperCase().startsWith('VR') || acct.toUpperCase().startsWith('VRT')
-      });
-    }
-    i++;
+// Derive code_challenge = BASE64URL(SHA256(verifier))
+async function generateCodeChallenge(verifier) {
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return btoa(String.fromCharCode(...new Uint8Array(hash)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// Generate random state for CSRF protection
+function generateState() {
+  return crypto.getRandomValues(new Uint8Array(16))
+    .reduce((s, b) => s + b.toString(16).padStart(2, '0'), '');
+}
+
+async function doOAuthLogin(e) {
+  e.preventDefault();
+
+  const codeVerifier    = generateCodeVerifier();
+  const codeChallenge   = await generateCodeChallenge(codeVerifier);
+  const state           = generateState();
+
+  // Store before redirect — survive the page navigation
+  sessionStorage.setItem('pkce_code_verifier', codeVerifier);
+  sessionStorage.setItem('oauth_state', state);
+
+  const params = new URLSearchParams({
+    response_type:          'code',
+    client_id:              APP_ID,
+    redirect_uri:           REDIRECT_URI,
+    scope:                  'trade account_manage',
+    state:                  state,
+    code_challenge:         codeChallenge,
+    code_challenge_method:  'S256',
+  });
+
+  window.location.href = AUTH_ENDPOINT + '?' + params.toString();
+}
+
+// Exchange the authorization code for an access token (called after redirect back)
+async function exchangeCodeForToken(code) {
+  const codeVerifier = sessionStorage.getItem('pkce_code_verifier');
+  if (!codeVerifier) throw new Error('Missing PKCE code_verifier in sessionStorage');
+
+  const body = new URLSearchParams({
+    grant_type:    'authorization_code',
+    client_id:     APP_ID,
+    code:          code,
+    code_verifier: codeVerifier,
+    redirect_uri:  REDIRECT_URI,
+  });
+
+  const res = await fetch(TOKEN_ENDPOINT, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    body.toString(),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('Token exchange failed: ' + err);
   }
-  return accounts;
+
+  // Clear PKCE values immediately after successful exchange
+  sessionStorage.removeItem('pkce_code_verifier');
+  sessionStorage.removeItem('oauth_state');
+
+  return res.json(); // { access_token, expires_in, token_type }
 }
 
 function buildAcctSelector(accounts) {
@@ -398,16 +447,17 @@ function buildAcctSelector(accounts) {
 }
 
 function onAcctChange() {
-  const idx = parseInt(g('acctSelect').value);
+  const idx  = parseInt(g('acctSelect').value);
   const acct = oauthAccounts[idx];
   if (!acct) return;
+  // In the new platform, activeToken is the Bearer access_token;
+  // the authorize WS call uses it directly.
   activeToken = acct.token;
   currency    = acct.currency;
   const badge = g('acctBadge');
   badge.textContent = acct.isVirtual ? 'DEMO' : 'REAL';
   badge.className   = 'acct-badge' + (acct.isVirtual ? ' virtual' : '');
   g('acctInfo').textContent = 'Account: ' + acct.acct + '  |  Currency: ' + acct.currency;
-  // Enable CONNECT once an account is selected
   g('btnConn').disabled = connected;
 }
 
@@ -513,9 +563,24 @@ function onError(msg) {
 // ─── AUTHORIZE ────────────────────────────────────────────────────────────────
 function onAuth(msg) {
   authorized = true;
-  balance    = parseFloat(msg.authorize.balance);
-  currency   = msg.authorize.currency || currency;
-  addLog(`✓ Authorized: ${msg.authorize.loginid} | Bal: ${balance.toFixed(2)} ${currency}`, 'ok');
+  const auth = msg.authorize;
+  balance    = parseFloat(auth.balance);
+  currency   = auth.currency || currency;
+
+  // Populate account selector from the authorize response account_list
+  if (auth.account_list && auth.account_list.length > 0) {
+    oauthAccounts = auth.account_list.map(a => ({
+      acct:      a.loginid,
+      token:     activeToken,   // same Bearer token for all accounts
+      currency:  a.currency || 'USD',
+      isVirtual: !!a.is_virtual,
+    }));
+    g('oauthLoginSection').style.display = 'none';
+    g('oauthAcctSection').style.display  = '';
+    buildAcctSelector(oauthAccounts);
+  }
+
+  addLog(`✓ Authorized: ${auth.loginid} | Bal: ${balance.toFixed(2)} ${currency}`, 'ok');
   updateKPIs();
   refreshBtns();
   wsSend({ balance: 1, subscribe: 1 });   // live balance stream
@@ -870,21 +935,70 @@ function updateKPIs() {
 }
 
 // ─── OAUTH INIT ───────────────────────────────────────────────────────────────
-function initOAuth() {
-  const accounts = parseOAuthCallback();
+async function initOAuth() {
+  const params      = new URLSearchParams(window.location.search);
+  const code        = params.get('code');
+  const returnedState = params.get('state');
+  const errorParam  = params.get('error');
 
-  if (accounts.length > 0) {
-    // Came back from OAuth redirect — show account selector
-    oauthAccounts = accounts;
-    g('oauthLoginSection').style.display = 'none';
-    g('oauthAcctSection').style.display  = '';
-    buildAcctSelector(accounts);
+  // Handle error returned by Deriv (e.g. user cancelled)
+  if (errorParam) {
+    const desc = params.get('error_description') || errorParam;
+    addLog('OAuth error: ' + desc, 'err');
+    alert2('Deriv login failed: ' + desc);
+    window.history.replaceState({}, document.title, REDIRECT_URI);
+    g('oauthLoginSection').style.display = '';
+    g('oauthAcctSection').style.display  = 'none';
+    return;
+  }
 
-    // Clean the OAuth params from the URL so a refresh doesn't re-trigger
+  // Came back from OAuth with an authorization code
+  if (code) {
+    // Validate state to prevent CSRF
+    const storedState = sessionStorage.getItem('oauth_state');
+    if (!storedState || storedState !== returnedState) {
+      addLog('OAuth state mismatch — possible CSRF attack. Aborting.', 'err');
+      alert2('Security error: OAuth state mismatch. Please try logging in again.');
+      sessionStorage.removeItem('pkce_code_verifier');
+      sessionStorage.removeItem('oauth_state');
+      window.history.replaceState({}, document.title, REDIRECT_URI);
+      return;
+    }
+
+    // Clean URL immediately
     window.history.replaceState({}, document.title, REDIRECT_URI);
 
-    addLog('OAuth successful — ' + accounts.length + ' account(s) found. Select one and click CONNECT.', 'ok');
-    alert2('Logged in via Deriv OAuth. Select an account and click CONNECT.', 'ok');
+    addLog('Authorization code received. Exchanging for access token…', 'info');
+    g('oauthStatus').textContent = 'Exchanging authorization code for token…';
+
+    try {
+      const tokenData = await exchangeCodeForToken(code);
+      const bearerToken = tokenData.access_token;
+
+      if (!bearerToken) throw new Error('No access_token in response');
+
+      // Store the Bearer token as activeToken for the WebSocket authorize call
+      activeToken = bearerToken;
+
+      // Use the WS authorize call to fetch account list and pick currency
+      // We show the account section with a single "token ready" entry
+      oauthAccounts = [{ acct: 'OAuth Account', token: bearerToken, currency: 'USD', isVirtual: false }];
+
+      g('oauthLoginSection').style.display = 'none';
+      g('oauthAcctSection').style.display  = '';
+      buildAcctSelector(oauthAccounts);
+
+      addLog('Access token obtained. Click CONNECT to authorize and fetch accounts.', 'ok');
+      alert2('Logged in via Deriv OAuth 2.0. Click CONNECT to continue.', 'ok');
+
+    } catch (err) {
+      addLog('Token exchange error: ' + err.message, 'err');
+      alert2('Login failed: ' + err.message + '. Please try again.');
+      g('oauthLoginSection').style.display = '';
+      g('oauthAcctSection').style.display  = 'none';
+      g('oauthStatus').textContent = 'Token exchange failed. Please try again.';
+    }
+
   } else {
     // Not yet authenticated — show login button
     g('oauthLoginSection').style.display = '';
