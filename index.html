@@ -523,12 +523,18 @@ function openWebSocket(wsUrl, selAcct) {
     updateKPIs(); refreshBtns(); lockCfg(true); startPing();
     wsSend({balance:1,subscribe:1});
     wsSend({transaction:1,subscribe:1});
-    // If bot was active before reconnect, re-seed history then resume
-    if (botState==='reconnecting'||botState==='running'||botState==='seeding') {
+    
+    // Always fetch history and subscribe to ticks upon connection so data is displayed immediately
+    if (botState === 'idle') {
+      addLog('Fetching initial history and subscribing to live ticks…', 'info');
+      seedFromHistory();
+      subscribeToTicks();
+    } else if (botState==='reconnecting'||botState==='running'||botState==='seeding') {
       addLog('Resuming bot after reconnect — re-seeding history…','warn');
       setStatus('seeding');
       digitHistory=[]; prevDigit=null;
       seedFromHistory();
+      subscribeToTicks();
     }
   };
 
@@ -598,11 +604,13 @@ function wsSend(obj) {
 // ── Seed history via ticks_history ────────────────────────────────────────────
 function seedFromHistory() {
   addLog('Requesting last '+HISTORY_SIZE+' ticks for history seed\u2026','info');
-  wsSend({ticks_history:SYMBOL,count:HISTORY_SIZE,end:'latest',style:'ticks',subscribe:1});
+  // Use subscribe:0 for a stable history-only request
+  wsSend({ticks_history:SYMBOL,count:HISTORY_SIZE,end:'latest',style:'ticks',subscribe:0});
 }
 function subscribeToTicks() {
   if (_tickSubId){ wsSend({forget:_tickSubId}); _tickSubId=null; }
-  setTimeout(seedFromHistory, 150);
+  addLog('Subscribing to live tick stream for '+SYMBOL+'\u2026','info');
+  wsSend({ticks:SYMBOL,subscribe:1});
 }
 function unsubscribeFromTicks() { wsSend({forget_all:'ticks'}); _tickSubId=null; }
 
