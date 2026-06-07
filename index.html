@@ -360,9 +360,10 @@ body {
 
 /* ── LOG SECTION ─────────────────────────────────────────────────────────── */
 .log-grid {
-  display: grid; grid-template-columns: 1fr 1fr;
-  gap: 14px; margin-bottom: 14px;
-  align-items: start;   /* prevent one panel stretching to match the other */
+  display: grid;
+  grid-template-columns: 1fr 1fr;   /* equal halves — same total width as .main-grid */
+  gap: 14px;
+  margin-bottom: 14px;
 }
 @media(max-width:760px){ .log-grid{ grid-template-columns:1fr; } }
 .log-panel {
@@ -726,6 +727,24 @@ const pocSubs   = {};
 let _rid        = 1;
 const nextRid   = () => _rid++;
 
+// Track active tick subscription to avoid AlreadySubscribed errors
+let _tickSubId  = null;
+
+function subscribeToTicks() {
+  if (_tickSubId) {
+    // Forget existing subscription first, then re-subscribe after a brief delay
+    wsSend({ forget: _tickSubId });
+    _tickSubId = null;
+    setTimeout(() => wsSend({ ticks: SYMBOL, subscribe: 1 }), 100);
+  } else {
+    wsSend({ ticks: SYMBOL, subscribe: 1 });
+  }
+}
+
+function unsubscribeFromTicks() {
+  wsSend({ forget_all: 'ticks' });
+  _tickSubId = null;
+}
 let oauthAccounts = [];
 let activeToken   = null;
 
@@ -964,6 +983,7 @@ function doDisconnect() {
   if (botState === 'running' || botState === 'settling') doStop();
   if (ws) { try { ws.close(); } catch(_){} ws = null; }
   connected = false; authorized = false; stopPing();
+  _tickSubId = null;
   dot(''); lbl('DISCONNECTED');
   setStatus('idle'); lockCfg(false); refreshBtns();
   addLog('Disconnected.', 'warn');
@@ -1038,6 +1058,8 @@ function onBal(msg) {
 
 // ─── TICK ─────────────────────────────────────────────────────────────────────
 function onTick(msg) {
+  // Capture subscription ID so we can forget it precisely later
+  if (msg.subscription && msg.subscription.id) _tickSubId = msg.subscription.id;
   if (botState !== 'running') return;
   const q   = msg.tick.quote;
   const epo = msg.tick.epoch;
@@ -1150,7 +1172,7 @@ function settleContract(side, stake, profit, won, cid, payout) {
     if (botState === 'settling') {
       setStatus('running');
       addLog('Both contracts settled. Resuming tick count…', 'info');
-      wsSend({ ticks: SYMBOL, subscribe: 1 });
+      subscribeToTicks();
     }
     refreshBtns();
   }
@@ -1252,6 +1274,7 @@ function doStart() {
   settling = false; settled = 0;
   pOdd = null; pEven = null;
   settledCids.clear();
+  _tickSubId = null;
   startBal = balance;
   initStake = parseFloat(g('cfgStake').value) || 0.35;
   mFactor   = parseFloat(g('cfgMF').value)    || 1.3;
@@ -1262,28 +1285,28 @@ function doStart() {
   g('evenPending').textContent = '';
   setStatus('running'); refreshBtns();
   addLog('════════ Bot STARTED ════════', 'ok');
-  wsSend({ ticks: SYMBOL, subscribe: 1 });
+  subscribeToTicks();
 }
 
 function doPause() {
   if (botState === 'paused') {
     setStatus('running'); addLog('Bot RESUMED.', 'ok');
-    wsSend({ ticks: SYMBOL, subscribe: 1 });
+    subscribeToTicks();
   } else { pauseBot(); }
   refreshBtns();
 }
 
 function pauseBot() {
   setStatus('paused'); addLog('Bot PAUSED.', 'warn');
-  settling = false;   // cancel any in-flight settle so timeout/settlement don't resume
-  wsSend({ forget_all: 'ticks' });
+  settling = false;
+  unsubscribeFromTicks();
 }
 
 function doStop() {
   setStatus('stopped'); settling = false;
   g('oddPending').textContent  = '';
   g('evenPending').textContent = '';
-  wsSend({ forget_all: 'ticks' });
+  unsubscribeFromTicks();
   wsSend({ forget_all: 'proposal_open_contract' });
   addLog('════════ Bot STOPPED ════════', 'err');
   refreshBtns();
@@ -1331,9 +1354,8 @@ function addLog(msg, cls = '') {
   const line = document.createElement('div');
   line.className = 'll';
   line.innerHTML = `<span class="lt">${t}</span><span class="lm ${cls}">${msg}</span>`;
-  box.appendChild(line);
-  box.scrollTop = box.scrollHeight;
-  while (box.children.length > 400) box.removeChild(box.firstChild);
+  box.prepend(line);
+  while (box.children.length > 200) box.removeChild(box.lastChild);
 }
 
 function addHistory(side, result, stake, payout, profit) {
@@ -1361,8 +1383,7 @@ function addHistory(side, result, stake, payout, profit) {
   tbody.insertBefore(tr, tbody.firstChild);  // newest on top
   const wrap = g('histWrap');
   wrap.scrollTop = 0;
-  // Keep max 400 rows
-  while (tbody.rows.length > 400) tbody.deleteRow(tbody.rows.length - 1);
+  while (tbody.rows.length > 200) tbody.deleteRow(tbody.rows.length - 1);
 }
 
 function clearHistory() {
