@@ -227,7 +227,8 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
           <div class="field"><label>Martingale</label><input type="number" id="cfgMF" value="1.3" min="1.01" step="0.01"/></div>
           <div class="field"><label>Take Profit</label><input type="number" id="cfgTP" value="15000" min="0" step="1"/></div>
           <div class="field"><label>Stop Loss</label><input type="number" id="cfgSL" value="50000" min="0" step="1"/></div>
-          <div class="field"><label>Threshold</label><input type="number" id="cfgThreshold" value="3" min="1" step="1"/></div>
+          <div class="field"><label>Threshold</label><input type="number" id="cfgThreshold" value="3" min="1" step="1" title="Min streak count for a digit to qualify as a trigger candidate"/></div>
+          <div class="field"><label>Counter Filter</label><input type="number" id="cfgDigitCounter" value="2" min="1" step="1" title="Min number of digits that must be tied at the max streak before a trade triggers"/></div>
         </div>
       </div>
       <div class="btn-row">
@@ -262,8 +263,9 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
         <div class="panel-hd">
           <span class="panel-title">Digit Follow Counters (last 200)</span>
           <span style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace">
-            <span style="color:var(--accent)">&#9632;</span> max odd-streak &#8594; fire DIGITEVEN &nbsp;
-            <span style="color:var(--accent2)">&#9632;</span> max even-streak &#8594; fire DIGITODD
+            <span style="color:var(--accent)">&#9632;</span> max odd-streak &rarr; fire DIGITEVEN &nbsp;
+            <span style="color:var(--accent2)">&#9632;</span> max even-streak &rarr; fire DIGITODD &nbsp;
+            <span style="color:var(--text3)">&bull; Threshold &amp; Counter filters apply</span>
           </span>
         </div>
         <div class="panel-body">
@@ -356,7 +358,7 @@ const RECONNECT_MS   = 3000;
 // ── State ─────────────────────────────────────────────────────────────────────
 let ws = null, connected = false, authorized = false;
 let botState = 'idle'; // idle|seeding|running|paused|stopped|reconnecting
-let currency = 'USD', initStake = 0.35, mFactor = 1.3, tpTarget = 15000, slTarget = 50000, triggerThreshold = 3;
+let currency = 'USD', initStake = 0.35, mFactor = 1.3, tpTarget = 15000, slTarget = 50000, triggerThreshold = 3, digitCounterFilter = 2;
 let _pipSize = 0;
 let balance = null, startBal = null, totalPL = 0, maxDD = 0, wins = 0, losses = 0;
 let reconnectAttempts = 0, reconnectTimer = null;
@@ -661,15 +663,15 @@ function feedDigit(d) {
 function recomputeBestDigits() {
   let maxOdd=-1, maxEven=-1;
   maxOddDigits=[]; maxEvenDigits=[];
+  // First pass: find the highest streak that meets threshold
   for (let i=0;i<10;i++) {
-    if (digitOddCount[i] >= triggerThreshold) {
-      if (digitOddCount[i] > maxOdd) { maxOdd = digitOddCount[i]; maxOddDigits = [i]; }
-      else if (digitOddCount[i] === maxOdd) maxOddDigits.push(i);
-    }
-    if (digitEvenCount[i] >= triggerThreshold) {
-      if (digitEvenCount[i] > maxEven) { maxEven = digitEvenCount[i]; maxEvenDigits = [i]; }
-      else if (digitEvenCount[i] === maxEven) maxEvenDigits.push(i);
-    }
+    if (digitOddCount[i] >= triggerThreshold && digitOddCount[i] > maxOdd)  maxOdd  = digitOddCount[i];
+    if (digitEvenCount[i] >= triggerThreshold && digitEvenCount[i] > maxEven) maxEven = digitEvenCount[i];
+  }
+  // Second pass: collect all digits tied at that max streak
+  for (let i=0;i<10;i++) {
+    if (maxOdd  > 0 && digitOddCount[i]  === maxOdd)  maxOddDigits.push(i);
+    if (maxEven > 0 && digitEvenCount[i] === maxEven) maxEvenDigits.push(i);
   }
 }
 
@@ -756,13 +758,16 @@ function onTick(msg) {
   if (pendingEven && !pendingEven.settled) predetermineResult('EVEN', d%2===0, d);
 
   // ── Evaluate triggers AFTER counters updated ──────────────────────────────
-  // maxOddDigits  → when seen, fire DIGITEVEN (digit has been followed by odds)
-  // maxEvenDigits → when seen, fire DIGITODD  (digit has been followed by evens)
-  const triggerEven = maxOddDigits.includes(d);
-  const triggerOdd  = maxEvenDigits.includes(d);
+  // Multi-digit threshold requirement: At least digitCounterFilter digits must meet threshold
+  const enoughOddDigits  = maxOddDigits.length >= digitCounterFilter;
+  const enoughEvenDigits = maxEvenDigits.length >= digitCounterFilter;
 
-  if (triggerEven) { addLog('Digit '+d+' has highest odd-streak \u2192 placing DIGITEVEN','info'); placeSide('EVEN'); }
-  if (triggerOdd)  { addLog('Digit '+d+' has highest even-streak \u2192 placing DIGITODD','info');  placeSide('ODD');  }
+  // Triggers fire if the current digit is one of those meeting the threshold AND we have enough such digits
+  const triggerEven = enoughOddDigits && maxOddDigits.includes(d);
+  const triggerOdd  = enoughEvenDigits && maxEvenDigits.includes(d);
+
+  if (triggerEven) { addLog('Digit '+d+' triggered DIGITEVEN ('+maxOddDigits.length+' digits at threshold)','info'); placeSide('EVEN'); }
+  if (triggerOdd)  { addLog('Digit '+d+' triggered DIGITODD ('+maxEvenDigits.length+' digits at threshold)','info');  placeSide('ODD');  }
 
   updateTriggerInfo(d, triggerOdd, triggerEven);
 }
@@ -897,6 +902,7 @@ function doStart() {
   tpTarget =parseFloat(g('cfgTP').value)||15000;
   slTarget =parseFloat(g('cfgSL').value)||50000;
   triggerThreshold = parseInt(g('cfgThreshold').value)||3;
+  digitCounterFilter = parseInt(g('cfgDigitCounter').value)||2;
   hideAlert(); updateSides(); updateKPIs();
   g('oddPending').textContent=''; g('evenPending').textContent='';
   
@@ -949,7 +955,7 @@ function refreshBtns() {
   g('btnStop').disabled  = !auth||botState==='idle'||botState==='stopped';
   g('btnPause').textContent = botState==='paused'?'Resume':'Pause';
 }
-function lockCfg(lock){ ['cfgStake','cfgMF','cfgTP','cfgSL'].forEach(id=>{ g(id).disabled=lock; }); }
+function lockCfg(lock){ ['cfgStake','cfgMF','cfgTP','cfgSL','cfgThreshold','cfgDigitCounter'].forEach(id=>{ g(id).disabled=lock; }); }
 function alert2(msg,type='error'){
   g('alertIcon').textContent=type==='ok'?'✓':type==='warn'?'ℹ':'⚠';
   g('alertMsg').textContent=msg; g('alert').className='show '+type;
@@ -1006,12 +1012,14 @@ function renderDigitTable(){
 
 function updateTriggerInfo(d,triggerOdd,triggerEven){
   let msg='Last digit: '+d+' ('+(d%2===0?'even':'odd')+')';
-  if (triggerOdd&&triggerEven) msg+=' \u2192 triggered DIGITODD + DIGITEVEN';
-  else if (triggerOdd)         msg+=' \u2192 triggered DIGITODD';
-  else if (triggerEven)        msg+=' \u2192 triggered DIGITEVEN';
-  else                         msg+=' \u2014 no trigger';
-  if (maxOddDigits.length)  msg+='  |  odd-trigger digits: ['+maxOddDigits.join(',')+']';
-  if (maxEvenDigits.length) msg+='  even-trigger digits: ['+maxEvenDigits.join(',')+']';
+  if (triggerOdd&&triggerEven) msg+=' → triggered DIGITODD + DIGITEVEN';
+  else if (triggerOdd)         msg+=' → triggered DIGITODD';
+  else if (triggerEven)        msg+=' → triggered DIGITEVEN';
+  else                         msg+=' — no trigger';
+  // Show counter filter status
+  const oddMet=maxOddDigits.length, evenMet=maxEvenDigits.length;
+  msg+='  |  odd-streak ≥'+triggerThreshold+': ['+maxOddDigits.join(',')+'] ('+oddMet+'/'+digitCounterFilter+' needed)';
+  msg+='  |  even-streak ≥'+triggerThreshold+': ['+maxEvenDigits.join(',')+'] ('+evenMet+'/'+digitCounterFilter+' needed)';
   g('triggerInfo').textContent=msg;
 }
 
