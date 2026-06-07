@@ -227,6 +227,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
           <div class="field"><label>Martingale</label><input type="number" id="cfgMF" value="1.3" min="1.01" step="0.01"/></div>
           <div class="field"><label>Take Profit</label><input type="number" id="cfgTP" value="15000" min="0" step="1"/></div>
           <div class="field"><label>Stop Loss</label><input type="number" id="cfgSL" value="50000" min="0" step="1"/></div>
+          <div class="field"><label>Threshold</label><input type="number" id="cfgThreshold" value="3" min="1" step="1"/></div>
         </div>
       </div>
       <div class="btn-row">
@@ -355,7 +356,8 @@ const RECONNECT_MS   = 3000;
 // ── State ─────────────────────────────────────────────────────────────────────
 let ws = null, connected = false, authorized = false;
 let botState = 'idle'; // idle|seeding|running|paused|stopped|reconnecting
-let currency = 'USD', initStake = 0.35, mFactor = 1.3, tpTarget = 15000, slTarget = 50000;
+let currency = 'USD', initStake = 0.35, mFactor = 1.3, tpTarget = 15000, slTarget = 50000, triggerThreshold = 3;
+let _pipSize = 0;
 let balance = null, startBal = null, totalPL = 0, maxDD = 0, wins = 0, losses = 0;
 let reconnectAttempts = 0, reconnectTimer = null;
 
@@ -604,8 +606,8 @@ function wsSend(obj) {
 // ── Seed history via ticks_history ────────────────────────────────────────────
 function seedFromHistory() {
   addLog('Requesting last '+HISTORY_SIZE+' ticks for history seed\u2026','info');
-  // Use subscribe:0 for a stable history-only request
-  wsSend({ticks_history:SYMBOL,count:HISTORY_SIZE,end:'latest',style:'ticks',subscribe:0});
+  // Removed subscribe parameter to avoid API validation errors on some account types
+  wsSend({ticks_history:SYMBOL,count:HISTORY_SIZE,end:'latest',style:'ticks'});
 }
 function subscribeToTicks() {
   if (_tickSubId){ wsSend({forget:_tickSubId}); _tickSubId=null; }
@@ -615,7 +617,21 @@ function subscribeToTicks() {
 function unsubscribeFromTicks() { wsSend({forget_all:'ticks'}); _tickSubId=null; }
 
 // ── Digit logic ───────────────────────────────────────────────────────────────
-function lastDigitOf(q) { const s=q.toString(); return parseInt(s[s.length-1],10); }
+function lastDigitOf(q) {
+  if (q == null) return 0;
+  const s = q.toString();
+  if (_pipSize > 0) {
+    const parts = s.split('.');
+    if (parts.length > 1) {
+      const decimals = parts[1].padEnd(_pipSize, '0');
+      return parseInt(decimals[decimals.length - 1], 10);
+    } else {
+      // No decimal point, so trailing digits are all zero
+      return 0;
+    }
+  }
+  return parseInt(s[s.length - 1], 10);
+}
 
 function feedDigit(d) {
   // 1. Update follow counters using previous digit
@@ -646,10 +662,14 @@ function recomputeBestDigits() {
   let maxOdd=-1, maxEven=-1;
   maxOddDigits=[]; maxEvenDigits=[];
   for (let i=0;i<10;i++) {
-    if (digitOddCount[i]>maxOdd)  { maxOdd=digitOddCount[i];  maxOddDigits=[i]; }
-    else if (digitOddCount[i]===maxOdd)  maxOddDigits.push(i);
-    if (digitEvenCount[i]>maxEven){ maxEven=digitEvenCount[i]; maxEvenDigits=[i]; }
-    else if (digitEvenCount[i]===maxEven) maxEvenDigits.push(i);
+    if (digitOddCount[i] >= triggerThreshold) {
+      if (digitOddCount[i] > maxOdd) { maxOdd = digitOddCount[i]; maxOddDigits = [i]; }
+      else if (digitOddCount[i] === maxOdd) maxOddDigits.push(i);
+    }
+    if (digitEvenCount[i] >= triggerThreshold) {
+      if (digitEvenCount[i] > maxEven) { maxEven = digitEvenCount[i]; maxEvenDigits = [i]; }
+      else if (digitEvenCount[i] === maxEven) maxEvenDigits.push(i);
+    }
   }
 }
 
@@ -700,6 +720,7 @@ function onBal(msg) {
 function onHistory(msg) {
   const hist=msg.history;
   if (!hist||!hist.prices) return;
+  if (msg.pip_size) _pipSize = msg.pip_size;
   if (msg.subscription&&msg.subscription.id) _tickSubId=msg.subscription.id;
   const prices=hist.prices;
   const count=Math.min(prices.length,HISTORY_SIZE);
@@ -875,16 +896,20 @@ function doStart() {
   mFactor  =parseFloat(g('cfgMF').value)||1.3;
   tpTarget =parseFloat(g('cfgTP').value)||15000;
   slTarget =parseFloat(g('cfgSL').value)||50000;
+  triggerThreshold = parseInt(g('cfgThreshold').value)||3;
   hideAlert(); updateSides(); updateKPIs();
   g('oddPending').textContent=''; g('evenPending').textContent='';
-  // Reset digit state and re-seed
-  digitHistory=[]; prevDigit=null;
-  digitOddCount.fill(0); digitEvenCount.fill(0); digitTotal.fill(0);
-  maxOddDigits=[]; maxEvenDigits=[];
-  renderSeedUI(); renderDigitTable();
-  setStatus('seeding'); refreshBtns();
-  addLog('\u2550\u2550\u2550\u2550 Bot STARTED \u2014 seeding history\u2026 \u2550\u2550\u2550\u2550','ok');
-  seedFromHistory();
+  
+  // Do NOT reset digit history if we already have data
+  if (digitHistory.length < HISTORY_SIZE) {
+    setStatus('seeding');
+    addLog('\u2550\u2550\u2550\u2550 Bot STARTED \u2014 seeding history\u2026 \u2550\u2550\u2550\u2550','ok');
+    seedFromHistory();
+  } else {
+    setStatus('running');
+    addLog('\u2550\u2550\u2550\u2550 Bot STARTED \u2014 using existing data \u2550\u2550\u2550\u2550','ok');
+  }
+  refreshBtns();
 }
 
 function doPause() {
