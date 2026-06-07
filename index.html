@@ -361,15 +361,18 @@ body {
 /* ── LOG SECTION ─────────────────────────────────────────────────────────── */
 .log-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;   /* equal halves — same total width as .main-grid */
+  grid-template-columns: 1fr 1fr;
   gap: 14px;
   margin-bottom: 14px;
+  min-width: 0;
 }
 @media(max-width:760px){ .log-grid{ grid-template-columns:1fr; } }
 .log-panel {
   border-radius: 12px; border: 1px solid var(--border);
   background: var(--surface); box-shadow: var(--shadow-sm);
   display: flex; flex-direction: column;
+  min-width: 0;        /* prevent grid blowout */
+  overflow: hidden;    /* clip children to panel boundary */
 }
 .log-hd {
   padding: 11px 14px 10px; border-bottom: 1px solid var(--border);
@@ -384,7 +387,7 @@ body {
 .log-clear:hover { color: var(--text); }
 /* Both scroll areas locked to identical height so panels match */
 #log, .hist-wrap {
-  height: 240px; overflow-y: auto;
+  height: 240px; overflow-y: auto; overflow-x: hidden;
 }
 #log {
   padding: 10px 12px;
@@ -392,9 +395,9 @@ body {
 }
 #log::-webkit-scrollbar, .hist-wrap::-webkit-scrollbar { width: 3px; }
 #log::-webkit-scrollbar-thumb, .hist-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-.ll { display: flex; gap: 9px; overflow: hidden; }
+.ll { display: flex; gap: 9px; width: 100%; min-width: 0; overflow: hidden; }
 .lt { color: var(--text3); flex-shrink: 0; }
-.lm { color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lm { color: var(--text2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lm.ok   { color: var(--green); }
 .lm.err  { color: var(--red); }
 .lm.warn { color: var(--yellow); }
@@ -403,6 +406,7 @@ body {
   width: 100%; border-collapse: collapse;
   font-family: 'DM Mono', monospace; font-size: 11px;
   table-layout: fixed;
+  max-width: 100%;
 }
 .hist-table colgroup col:nth-child(1) { width: 22%; }
 .hist-table colgroup col:nth-child(2) { width: 16%; }
@@ -1067,7 +1071,6 @@ function onTick(msg) {
   g('lastTime').textContent = new Date(epo * 1000).toLocaleTimeString();
   tickCount++;
   renderTickUI();
-  addLog(`Tick ${tickCount}/${NCYCLE}: ${q}`);
   if (tickCount >= NCYCLE) {
     tickCount = 0; renderTickUI(); executeCycle();
   }
