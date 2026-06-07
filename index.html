@@ -325,25 +325,29 @@ body {
 .side-panel.even .side-hd-title { color: var(--accent2); }
 .side-pending { font-size: 13px; }
 .side-body { padding: 12px 15px; }
-/* 4 stats in a 2×2 grid, each stacked vertically */
-.side-stats {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;
+/* Stats as a borderless table — label row on top, value row below */
+.side-table {
+  width: 100%; border-collapse: collapse; margin-bottom: 10px;
 }
-.side-stat {
-  background: var(--surface2); border: 1px solid var(--border);
-  border-radius: 7px; padding: 8px 10px;
-}
-.side-lbl {
+.side-table th {
   font-size: 9.5px; letter-spacing: 1.2px; text-transform: uppercase;
-  color: var(--text3); margin-bottom: 4px; white-space: nowrap;
+  color: var(--text3); font-weight: 600; text-align: left;
+  padding: 0 8px 5px 0; white-space: nowrap; width: 25%;
 }
-.side-val {
+.side-table td {
   font-family: 'DM Mono', monospace; font-size: 15px; font-weight: 500;
-  color: var(--text); line-height: 1;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--text); text-align: left;
+  padding: 0 8px 0 0; line-height: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 25%;
 }
-.side-val.green { color: var(--green); }
-.side-val.red   { color: var(--red); }
+.side-table td.green { color: var(--green); }
+.side-table td.red   { color: var(--red); }
+/* Divider between the two rows */
+.side-table tr.vals td {
+  padding-top: 2px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
 .chips-wrap { margin-top: 10px; padding: 8px 10px; border-radius: 7px; background: var(--surface2); border: 1px solid var(--border); min-height: 36px; }
 .chips-label { font-size: 9.5px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text3); margin-bottom: 5px; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -578,24 +582,20 @@ body {
             <span class="side-pending" id="oddPending"></span>
           </div>
           <div class="side-body">
-            <div class="side-stats">
-              <div class="side-stat">
-                <div class="side-lbl">Next Stake</div>
-                <div class="side-val" id="oddNextStake">0.35</div>
-              </div>
-              <div class="side-stat">
-                <div class="side-lbl">Loss List</div>
-                <div class="side-val" id="oddLen">0</div>
-              </div>
-              <div class="side-stat">
-                <div class="side-lbl">Wins</div>
-                <div class="side-val green" id="oddW">0</div>
-              </div>
-              <div class="side-stat">
-                <div class="side-lbl">Losses</div>
-                <div class="side-val red" id="oddL">0</div>
-              </div>
-            </div>
+            <table class="side-table">
+              <tr class="lbls">
+                <th>Next Stake</th>
+                <th>Loss List</th>
+                <th>Wins</th>
+                <th>Losses</th>
+              </tr>
+              <tr class="vals">
+                <td id="oddNextStake">0.35</td>
+                <td id="oddLen">0</td>
+                <td class="green" id="oddW">0</td>
+                <td class="red"   id="oddL">0</td>
+              </tr>
+            </table>
             <div class="chips-wrap">
               <div class="chips-label">Loss Stakes</div>
               <div class="chips" id="oddChips"><span class="chip-empty">empty</span></div>
@@ -609,24 +609,20 @@ body {
             <span class="side-pending" id="evenPending"></span>
           </div>
           <div class="side-body">
-            <div class="side-stats">
-              <div class="side-stat">
-                <div class="side-lbl">Next Stake</div>
-                <div class="side-val" id="evenNextStake">0.35</div>
-              </div>
-              <div class="side-stat">
-                <div class="side-lbl">Loss List</div>
-                <div class="side-val" id="evenLen">0</div>
-              </div>
-              <div class="side-stat">
-                <div class="side-lbl">Wins</div>
-                <div class="side-val green" id="evenW">0</div>
-              </div>
-              <div class="side-stat">
-                <div class="side-lbl">Losses</div>
-                <div class="side-val red" id="evenL">0</div>
-              </div>
-            </div>
+            <table class="side-table">
+              <tr class="lbls">
+                <th>Next Stake</th>
+                <th>Loss List</th>
+                <th>Wins</th>
+                <th>Losses</th>
+              </tr>
+              <tr class="vals">
+                <td id="evenNextStake">0.35</td>
+                <td id="evenLen">0</td>
+                <td class="green" id="evenW">0</td>
+                <td class="red"   id="evenL">0</td>
+              </tr>
+            </table>
             <div class="chips-wrap">
               <div class="chips-label">Loss Stakes</div>
               <div class="chips" id="evenChips"><span class="chip-empty">empty</span></div>
@@ -1154,6 +1150,7 @@ function settleContract(side, stake, profit, won, cid, payout) {
     if (botState === 'settling') {
       setStatus('running');
       addLog('Both contracts settled. Resuming tick count…', 'info');
+      wsSend({ ticks: SYMBOL, subscribe: 1 });
     }
     refreshBtns();
   }
@@ -1234,8 +1231,10 @@ function wsSendBuy(type, stake, rid) {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     addLog('WS not open — cannot buy.', 'err'); return;
   }
+  // price = max acceptable cost. Must be >= payout. For DIGIT contracts payout ≈ stake*1.87,
+  // so stake*3 gives a safe ceiling at any stake size and avoids "Maximum Purchase Limit" errors.
   ws.send(JSON.stringify({
-    buy: '1', price: 1000,
+    buy: '1', price: Math.ceil(stake * 3),
     parameters: {
       contract_type: type, currency, underlying_symbol: SYMBOL,
       duration: 1, duration_unit: 't', basis: 'stake', amount: stake,
@@ -1276,6 +1275,7 @@ function doPause() {
 
 function pauseBot() {
   setStatus('paused'); addLog('Bot PAUSED.', 'warn');
+  settling = false;   // cancel any in-flight settle so timeout/settlement don't resume
   wsSend({ forget_all: 'ticks' });
 }
 
