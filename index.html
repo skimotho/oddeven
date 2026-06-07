@@ -1,332 +1,646 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Deriv Digit Bot · 1HZ10V</title>
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
+/* ── THEME TOKENS ─────────────────────────────────────────────────────────── */
 :root {
-  --bg:        #080c10;
-  --card:      #111d2e;
-  --border:    #1c3050;
-  --accent:    #00d4ff;
-  --accent2:   #ff6b35;
-  --green:     #00e676;
-  --red:       #ff1744;
-  --yellow:    #ffd740;
-  --text:      #e0eaf8;
-  --muted:     #4a6580;
-  --mono:      'Share Tech Mono', monospace;
-  --main:      'Rajdhani', sans-serif;
+  --transition: .22s ease;
 }
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:var(--main);font-size:15px;min-height:100vh;overflow-x:hidden}
-body::before{content:'';position:fixed;inset:0;z-index:0;
-  background-image:linear-gradient(rgba(0,212,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.025) 1px,transparent 1px);
-  background-size:40px 40px;pointer-events:none}
-.wrap{position:relative;z-index:1;max-width:1140px;margin:0 auto;padding:20px 16px 50px}
+[data-theme="dark"] {
+  --bg:          #0b0f17;
+  --surface:     #111827;
+  --surface2:    #1a2233;
+  --border:      #1f2d42;
+  --border2:     #263549;
+  --text:        #e2eaf6;
+  --text2:       #8fa3bf;
+  --text3:       #4d6480;
+  --accent:      #3b82f6;
+  --accent-glow: rgba(59,130,246,.18);
+  --accent2:     #f97316;
+  --accent2-glow:rgba(249,115,22,.14);
+  --green:       #22c55e;
+  --green-bg:    rgba(34,197,94,.1);
+  --red:         #ef4444;
+  --red-bg:      rgba(239,68,68,.1);
+  --yellow:      #f59e0b;
+  --yellow-bg:   rgba(245,158,11,.1);
+  --shadow:      0 2px 16px rgba(0,0,0,.45);
+  --shadow-sm:   0 1px 6px rgba(0,0,0,.3);
+}
+[data-theme="light"] {
+  --bg:          #f0f4fa;
+  --surface:     #ffffff;
+  --surface2:    #f7f9fc;
+  --border:      #dde4ef;
+  --border2:     #c8d4e8;
+  --text:        #0f1b2d;
+  --text2:       #4a6080;
+  --text3:       #9bafc8;
+  --accent:      #2563eb;
+  --accent-glow: rgba(37,99,235,.12);
+  --accent2:     #ea6c0a;
+  --accent2-glow:rgba(234,108,10,.1);
+  --green:       #16a34a;
+  --green-bg:    rgba(22,163,74,.08);
+  --red:         #dc2626;
+  --red-bg:      rgba(220,38,38,.08);
+  --yellow:      #d97706;
+  --yellow-bg:   rgba(217,119,6,.1);
+  --shadow:      0 2px 16px rgba(15,27,45,.1);
+  --shadow-sm:   0 1px 6px rgba(15,27,45,.07);
+}
 
-/* HEADER */
-header{display:flex;align-items:center;justify-content:space-between;padding:14px 0 18px;border-bottom:1px solid var(--border);margin-bottom:22px;flex-wrap:wrap;gap:12px}
-.brand{display:flex;align-items:center;gap:12px}
-.brand-icon{width:40px;height:40px;border-radius:9px;background:linear-gradient(135deg,#00d4ff18,#00d4ff40);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:22px}
-.brand-name{font-size:22px;font-weight:700;letter-spacing:2px;color:var(--accent)}
-.brand-sub{font-size:10px;color:var(--muted);letter-spacing:3px;text-transform:uppercase}
-.ws-pill{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--muted);padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:var(--card)}
-.ws-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:all .3s;flex-shrink:0}
-.ws-dot.connected{background:var(--green);box-shadow:0 0 8px var(--green)}
-.ws-dot.connecting{background:var(--yellow);animation:blink 1s infinite}
-.ws-dot.error{background:var(--red);box-shadow:0 0 8px var(--red)}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+/* ── RESET ───────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+  transition: background var(--transition), color var(--transition);
+}
 
-/* ALERT */
-#alert{display:none;padding:11px 16px;border-radius:8px;border:1px solid var(--red);background:#ff174410;color:var(--red);font-weight:600;font-size:13px;margin-bottom:16px;align-items:center;gap:10px;line-height:1.4}
-#alert.show{display:flex}
-#alert.warn{border-color:var(--yellow);background:#ffd74010;color:var(--yellow)}
-#alert.ok{border-color:var(--green);background:#00e67610;color:var(--green)}
-.alert-close{margin-left:auto;cursor:pointer;font-size:16px;opacity:.7;flex-shrink:0}
-.alert-close:hover{opacity:1}
+/* ── LAYOUT ──────────────────────────────────────────────────────────────── */
+.app { max-width: 1280px; margin: 0 auto; padding: 0 20px 40px; }
 
-/* KPI ROW */
-.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
-.kpi{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;position:relative;overflow:hidden}
-.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.4}
-.kpi-label{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
-.kpi-val{font-family:var(--mono);font-size:21px;color:var(--text);word-break:break-all}
-.kpi-val.pos{color:var(--green)} .kpi-val.neg{color:var(--red)} .kpi-val.accent{color:var(--accent)}
+/* ── HEADER ──────────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 0 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.header-left { display: flex; align-items: center; gap: 14px; }
+.logo {
+  width: 38px; height: 38px; border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent) 0%, #6366f1 100%);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+  box-shadow: 0 0 18px var(--accent-glow);
+}
+.brand-name {
+  font-size: 17px; font-weight: 700; letter-spacing: .5px; color: var(--text);
+}
+.brand-sub { font-size: 11px; color: var(--text3); letter-spacing: 1.5px; margin-top: 1px; }
+.header-right { display: flex; align-items: center; gap: 10px; }
 
-/* SIDE CARDS */
-.sides{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
-@media(max-width:640px){.sides,.main-grid{grid-template-columns:1fr}}
-.side{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px}
-.side.odd{border-top:2px solid var(--accent)}
-.side.even{border-top:2px solid var(--accent2)}
-.side-hd{font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
-.side.odd .side-hd{color:var(--accent)}
-.side.even .side-hd{color:var(--accent2)}
-.side-hd span{font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px}
-.side-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
-.side-lbl{font-size:11px;color:var(--muted);letter-spacing:.5px}
-.side-val{font-family:var(--mono);font-size:13px}
-.chip-wrap{margin-top:10px;padding:8px;border-radius:6px;background:#060e18;border:1px solid var(--border);min-height:34px}
-.chip-lbl{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
-.chips{display:flex;flex-wrap:wrap;gap:4px}
-.chip{padding:2px 8px;border-radius:4px;font-family:var(--mono);font-size:11px;background:#162030;border:1px solid #2a3f58;color:var(--red)}
-.chip.moved{border-color:var(--yellow);color:var(--yellow)}
-.chip-empty{color:var(--muted);font-size:11px;font-family:var(--mono)}
+/* WS status pill */
+.ws-pill {
+  display: flex; align-items: center; gap: 7px;
+  font-family: 'DM Mono', monospace; font-size: 11.5px; color: var(--text2);
+  padding: 6px 12px; border-radius: 20px;
+  border: 1px solid var(--border); background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.ws-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text3); flex-shrink: 0; transition: all .3s;
+}
+.ws-dot.connected  { background: var(--green);  box-shadow: 0 0 7px var(--green); }
+.ws-dot.connecting { background: var(--yellow); animation: pulse 1.2s infinite; }
+.ws-dot.error      { background: var(--red);    box-shadow: 0 0 7px var(--red); }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.25} }
 
-/* MAIN GRID */
-.main-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px}
-.card-title{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:8px}
-.card-title::after{content:'';flex:1;height:1px;background:var(--border)}
+/* Theme toggle */
+.theme-btn {
+  width: 36px; height: 36px; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text2); font-size: 16px; display: flex;
+  align-items: center; justify-content: center;
+  transition: all var(--transition); box-shadow: var(--shadow-sm);
+}
+.theme-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-/* CONFIG */
-.cfg-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media(max-width:480px){.cfg-grid{grid-template-columns:1fr}}
-.field{display:flex;flex-direction:column;gap:5px}
-.field label{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
-.field input{background:#07111e;border:1px solid var(--border);border-radius:7px;padding:9px 12px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none;transition:border .2s;width:100%}
-.field input:focus{border-color:var(--accent)}
-.field input:disabled{opacity:.4;cursor:not-allowed}
+/* ── ALERT ───────────────────────────────────────────────────────────────── */
+#alert {
+  display: none; padding: 11px 16px; border-radius: 9px; margin-bottom: 16px;
+  font-size: 13px; font-weight: 500; align-items: center; gap: 10px;
+  border: 1px solid var(--red); background: var(--red-bg); color: var(--red);
+}
+#alert.show     { display: flex; }
+#alert.warn     { border-color: var(--yellow); background: var(--yellow-bg); color: var(--yellow); }
+#alert.ok       { border-color: var(--green);  background: var(--green-bg);  color: var(--green); }
+.alert-close    { margin-left: auto; cursor: pointer; opacity: .6; font-size: 15px; }
+.alert-close:hover { opacity: 1; }
 
-/* BUTTONS */
-.controls{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
-.btn{padding:10px 22px;border-radius:8px;border:none;cursor:pointer;font-family:var(--main);font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;transition:filter .2s}
-.btn:hover:not(:disabled){filter:brightness(1.2)}
-.btn:disabled{opacity:.3;cursor:not-allowed}
-.btn-connect   {background:linear-gradient(135deg,#00d4ff18,#00d4ff35);border:1px solid var(--accent);color:var(--accent)}
-.btn-disconnect{background:linear-gradient(135deg,#4a658018,#4a658035);border:1px solid var(--muted);color:var(--muted)}
-.btn-start     {background:linear-gradient(135deg,#00e67618,#00e67635);border:1px solid var(--green);color:var(--green)}
-.btn-pause     {background:linear-gradient(135deg,#ffd74018,#ffd74035);border:1px solid var(--yellow);color:var(--yellow)}
-.btn-stop      {background:linear-gradient(135deg,#ff174418,#ff174435);border:1px solid var(--red);color:var(--red)}
+/* ── KPI STRIP ───────────────────────────────────────────────────────────── */
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+@media(max-width:1100px){.kpi-strip{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:640px) {.kpi-strip{grid-template-columns:repeat(2,1fr)}}
+.kpi {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 13px 15px;
+  box-shadow: var(--shadow-sm); transition: border-color var(--transition);
+}
+.kpi:hover { border-color: var(--border2); }
+.kpi-label {
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--text3); margin-bottom: 6px;
+}
+.kpi-val {
+  font-family: 'DM Mono', monospace; font-size: 19px; font-weight: 500;
+  color: var(--text); line-height: 1; word-break: break-all;
+}
+.kpi-val.pos { color: var(--green); }
+.kpi-val.neg { color: var(--red); }
+.kpi-val.blue { color: var(--accent); }
 
-/* TICK PROGRESS */
-.tick-hd{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:flex;justify-content:space-between}
-.tick-track{height:6px;background:#07111e;border-radius:3px;overflow:hidden;border:1px solid var(--border)}
-.tick-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .25s}
-.tick-dots{display:flex;gap:6px;margin-top:8px}
-.tdot{width:12px;height:12px;border-radius:50%;background:var(--border);border:1px solid var(--border);transition:all .2s}
-.tdot.done{background:var(--muted);border-color:var(--muted)}
-.tdot.active{background:var(--accent);border-color:var(--accent);box-shadow:0 0 6px var(--accent)}
-.last-tick-val{font-family:var(--mono);font-size:32px;color:var(--accent);margin-top:4px}
-.last-tick-time{font-size:11px;color:var(--muted);margin-top:3px}
+/* status badge */
+.sbadge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 5px; font-size: 10.5px;
+  font-weight: 600; letter-spacing: .8px; text-transform: uppercase;
+  font-family: 'DM Mono', monospace;
+}
+.sbadge::before { content:''; width:5px;height:5px;border-radius:50%; }
+.sbadge.idle     { background:var(--surface2); color:var(--text3); }
+.sbadge.idle::before { background:var(--text3); }
+.sbadge.running  { background:var(--green-bg); color:var(--green); border:1px solid var(--green); }
+.sbadge.running::before { background:var(--green); box-shadow:0 0 5px var(--green); animation:pulse 1s infinite; }
+.sbadge.paused   { background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow); }
+.sbadge.paused::before { background:var(--yellow); }
+.sbadge.settling { background:rgba(59,130,246,.1);color:var(--accent);border:1px solid var(--accent); }
+.sbadge.settling::before { background:var(--accent); animation:pulse 1s infinite; }
+.sbadge.stopped  { background:var(--red-bg);color:var(--red);border:1px solid var(--red); }
+.sbadge.stopped::before { background:var(--red); }
 
-/* STATUS BADGE */
-.sbadge{display:inline-block;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;font-family:var(--mono)}
-.sbadge.idle    {background:#162030;color:var(--muted)}
-.sbadge.running {background:#00e67614;color:var(--green);border:1px solid var(--green)}
-.sbadge.paused  {background:#ffd74014;color:var(--yellow);border:1px solid var(--yellow)}
-.sbadge.settling{background:#00d4ff14;color:var(--accent);border:1px solid var(--accent)}
-.sbadge.stopped {background:#ff174414;color:var(--red);border:1px solid var(--red)}
+/* ── MAIN GRID ───────────────────────────────────────────────────────────── */
+.main-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+@media(max-width:900px){ .main-grid{ grid-template-columns:1fr; } }
 
-/* LOG PANEL */
-.log-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
-@media(max-width:700px){.log-grid{grid-template-columns:1fr}}
-#log,#histLog{background:#040b12;border:1px solid var(--border);border-radius:10px;padding:12px 14px;height:260px;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.8}
-#log::-webkit-scrollbar,#histLog::-webkit-scrollbar{width:4px}
-#log::-webkit-scrollbar-thumb,#histLog::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-.ll{display:flex;gap:10px}
-.lt{color:var(--muted);flex-shrink:0}
-.lm{color:var(--text)} .lm.ok{color:var(--green)} .lm.err{color:var(--red)} .lm.warn{color:var(--yellow)} .lm.info{color:var(--accent)}
+/* ── PANEL / CARD ────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: border-color var(--transition), background var(--transition);
+}
+.panel-hd {
+  padding: 12px 16px 11px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.panel-title {
+  font-size: 11px; font-weight: 600; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--text2);
+}
+.panel-body { padding: 16px; }
 
-/* OAUTH */
-.oauth-box{display:flex;flex-direction:column;gap:14px}
-.oauth-login-btn{display:flex;align-items:center;justify-content:center;gap:10px;padding:13px 28px;border-radius:9px;border:1px solid var(--accent);background:linear-gradient(135deg,#00d4ff12,#00d4ff28);color:var(--accent);font-family:var(--main);font-size:15px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;text-decoration:none;transition:filter .2s;width:100%}
-.oauth-login-btn:hover{filter:brightness(1.2)}
-.oauth-login-btn svg{flex-shrink:0}
-.oauth-acct-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.acct-select{flex:1;background:#07111e;border:1px solid var(--border);border-radius:7px;padding:9px 12px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none;min-width:0}
-.acct-select:focus{border-color:var(--accent)}
-.acct-badge{padding:3px 10px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:1px;font-family:var(--mono);background:#00e67614;color:var(--green);border:1px solid var(--green);white-space:nowrap}
-.acct-badge.virtual{background:#00d4ff14;color:var(--accent);border-color:var(--accent)}
-.oauth-sep{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:11px;letter-spacing:1px}
-.oauth-sep::before,.oauth-sep::after{content:'';flex:1;height:1px;background:var(--border)}
-#oauthStatus{font-size:12px;color:var(--muted);font-family:var(--mono);margin-top:2px}
+/* ── CONFIG PANEL ────────────────────────────────────────────────────────── */
+.oauth-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.oauth-login-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 10px 18px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent-glow);
+  color: var(--accent); font-family: 'DM Sans', sans-serif;
+  font-size: 13px; font-weight: 600; letter-spacing: .5px;
+  text-decoration: none; transition: all var(--transition);
+}
+.oauth-login-btn:hover { background: rgba(59,130,246,.28); }
+#oauthStatus { font-size: 11.5px; color: var(--text3); margin-top: 8px; font-family:'DM Mono',monospace; }
+.acct-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.acct-select {
+  flex: 1; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 7px; padding: 8px 10px; color: var(--text);
+  font-family: 'DM Mono', monospace; font-size: 12px; outline: none;
+  transition: border-color var(--transition);
+}
+.acct-select:focus { border-color: var(--accent); }
+.acct-badge {
+  padding: 3px 9px; border-radius: 5px; font-size: 10px; font-weight: 700;
+  letter-spacing: 1px; font-family: 'DM Mono', monospace;
+  background: var(--green-bg); color: var(--green); border: 1px solid var(--green);
+  white-space: nowrap;
+}
+.acct-badge.virtual { background: var(--accent-glow); color: var(--accent); border-color: var(--accent); }
+#acctInfo { font-size: 11px; color: var(--text3); font-family:'DM Mono',monospace; margin-top:5px; }
+
+/* Config fields */
+.config-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.cfg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field label {
+  display: block; font-size: 10px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--text3); margin-bottom: 5px;
+}
+.field input {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 7px; padding: 8px 10px; color: var(--text);
+  font-family: 'DM Mono', monospace; font-size: 12.5px; outline: none;
+  transition: border-color var(--transition), background var(--transition);
+}
+.field input:focus { border-color: var(--accent); background: var(--bg); }
+.field input:disabled { opacity: .38; cursor: not-allowed; }
+
+/* Buttons */
+.btn-row { padding: 14px 16px; display: flex; gap: 7px; flex-wrap: wrap; }
+.btn {
+  flex: 1; min-width: 64px; padding: 8px 10px; border-radius: 7px;
+  border: 1px solid transparent; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  transition: all var(--transition); white-space: nowrap;
+}
+.btn:disabled { opacity: .28; cursor: not-allowed; pointer-events: none; }
+.btn-connect    { border-color:var(--accent);  background:var(--accent-glow);   color:var(--accent); }
+.btn-disconnect { border-color:var(--border2); background:var(--surface2);      color:var(--text2); }
+.btn-start      { border-color:var(--green);   background:var(--green-bg);      color:var(--green); }
+.btn-pause      { border-color:var(--yellow);  background:var(--yellow-bg);     color:var(--yellow); }
+.btn-stop       { border-color:var(--red);     background:var(--red-bg);        color:var(--red); }
+.btn:not(:disabled):hover { filter: brightness(1.18); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.18); }
+.btn:not(:disabled):active { transform: translateY(0); }
+
+/* ── RIGHT COLUMN ─────────────────────────────────────────────────────────── */
+.right-col { display: flex; flex-direction: column; gap: 14px; }
+
+/* ── TICK PANEL ───────────────────────────────────────────────────────────── */
+.tick-panel .panel-body {
+  display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center;
+}
+.tick-progress-wrap { flex: 1; }
+.tick-hd {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 7px;
+}
+.tick-label { font-size: 11px; color: var(--text3); letter-spacing: 1px; }
+.tick-count { font-family:'DM Mono',monospace; font-size: 13px; color: var(--text2); }
+.tick-track {
+  height: 5px; background: var(--surface2); border-radius: 3px;
+  border: 1px solid var(--border); overflow: hidden;
+}
+.tick-fill {
+  height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width .25s ease;
+}
+.tick-dots { display: flex; gap: 5px; margin-top: 9px; }
+.tdot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--surface2); border: 1px solid var(--border); transition: all .2s;
+}
+.tdot.done   { background: var(--text3); border-color: var(--text3); }
+.tdot.active { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 6px var(--accent-glow); }
+.tick-live { text-align: right; }
+.tick-live-val { font-family:'DM Mono',monospace; font-size: 28px; color: var(--accent); font-weight: 500; }
+.tick-live-time { font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+/* ── SIDES GRID ───────────────────────────────────────────────────────────── */
+.sides-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media(max-width:580px){ .sides-grid{ grid-template-columns:1fr; } }
+.side-panel { border-radius: 12px; border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-sm); overflow: hidden; }
+.side-panel.odd  { border-top: 3px solid var(--accent); }
+.side-panel.even { border-top: 3px solid var(--accent2); }
+.side-hd {
+  padding: 11px 15px 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.side-hd-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+}
+.side-panel.odd  .side-hd-title { color: var(--accent); }
+.side-panel.even .side-hd-title { color: var(--accent2); }
+.side-pending { font-size: 13px; }
+.side-body { padding: 12px 15px; }
+.side-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.side-row:last-child { margin-bottom: 0; }
+.side-lbl { font-size: 11px; color: var(--text3); }
+.side-val { font-family: 'DM Mono', monospace; font-size: 13px; color: var(--text); }
+.side-val.green { color: var(--green); }
+.side-val.red   { color: var(--red); }
+.chips-wrap { margin-top: 10px; padding: 8px 10px; border-radius: 7px; background: var(--surface2); border: 1px solid var(--border); min-height: 36px; }
+.chips-label { font-size: 9.5px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text3); margin-bottom: 5px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip {
+  padding: 2px 7px; border-radius: 4px; font-family: 'DM Mono', monospace;
+  font-size: 11px; background: var(--red-bg);
+  border: 1px solid rgba(239,68,68,.2); color: var(--red);
+}
+.chip-empty { font-size: 11px; color: var(--text3); font-family:'DM Mono',monospace; }
+
+/* ── LOG SECTION ─────────────────────────────────────────────────────────── */
+.log-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+@media(max-width:760px){ .log-grid{ grid-template-columns:1fr; } }
+.log-panel { border-radius: 12px; border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; }
+.log-hd {
+  padding: 11px 14px 10px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+}
+.log-title { font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--text2); }
+.log-clear {
+  background: none; border: none; cursor: pointer; font-size: 11px;
+  letter-spacing: 1px; color: var(--text3); padding: 2px 6px;
+  border-radius: 4px; transition: color var(--transition);
+}
+.log-clear:hover { color: var(--text); }
+#log {
+  flex: 1; padding: 10px 12px; height: 240px; overflow-y: auto;
+  font-family: 'DM Mono', monospace; font-size: 11.5px; line-height: 1.9;
+}
+#log::-webkit-scrollbar { width: 3px; }
+#log::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+.ll { display: flex; gap: 9px; }
+.lt { color: var(--text3); flex-shrink: 0; }
+.lm { color: var(--text2); }
+.lm.ok   { color: var(--green); }
+.lm.err  { color: var(--red); }
+.lm.warn { color: var(--yellow); }
+.lm.info { color: var(--accent); }
+
+/* ── HISTORY TABLE ───────────────────────────────────────────────────────── */
+.hist-wrap { flex: 1; height: 240px; overflow-y: auto; }
+.hist-wrap::-webkit-scrollbar { width: 3px; }
+.hist-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+.hist-table {
+  width: 100%; border-collapse: collapse;
+  font-family: 'DM Mono', monospace; font-size: 11.5px;
+}
+.hist-table thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface2); padding: 7px 10px;
+  font-size: 10px; font-weight: 600; letter-spacing: 1.2px;
+  text-transform: uppercase; color: var(--text3);
+  border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap;
+}
+.hist-table thead th:last-child { text-align: center; }
+.hist-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background var(--transition);
+}
+.hist-table tbody tr:hover { background: var(--surface2); }
+.hist-table tbody td { padding: 7px 10px; color: var(--text2); white-space: nowrap; }
+.hist-table tbody td:last-child { text-align: center; }
+.hist-type-odd  { color: var(--accent); font-weight: 500; }
+.hist-type-even { color: var(--accent2); font-weight: 500; }
+.hist-win  { background: var(--green-bg); color: var(--green); border: 1px solid rgba(34,197,94,.2); border-radius: 4px; padding: 1px 7px; display: inline-block; }
+.hist-loss { background: var(--red-bg);   color: var(--red);   border: 1px solid rgba(239,68,68,.2); border-radius: 4px; padding: 1px 7px; display: inline-block; }
+.hist-empty { text-align: center; padding: 28px 0; color: var(--text3); font-family:'DM Sans',sans-serif; font-size: 12px; }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="app">
 
-<!-- HEADER -->
-<header>
-  <div class="brand">
-    <div class="brand-icon">⚡</div>
-    <div>
-      <div class="brand-name">DIGIT BOT</div>
-      <div class="brand-sub">Deriv · 1HZ10V · ODD / EVEN Martingale</div>
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">⚡</div>
+      <div>
+        <div class="brand-name">Digit Bot</div>
+        <div class="brand-sub">DERIV · 1HZ10V · ODD/EVEN MARTINGALE</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+      <div class="ws-pill">
+        <div class="ws-dot" id="wsDot"></div>
+        <span id="wsLabel">DISCONNECTED</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ALERT -->
+  <div id="alert">
+    <span id="alertIcon">⚠</span>
+    <span id="alertMsg"></span>
+    <span class="alert-close" onclick="hideAlert()">✕</span>
+  </div>
+
+  <!-- KPI STRIP -->
+  <div class="kpi-strip">
+    <div class="kpi">
+      <div class="kpi-label">Balance</div>
+      <div class="kpi-val blue" id="kBalance">—</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">P&amp;L</div>
+      <div class="kpi-val" id="kPL">0.00</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Max Drawdown</div>
+      <div class="kpi-val neg" id="kDD">0.00</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">W / L</div>
+      <div class="kpi-val" id="kWL">0 / 0</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Cycles</div>
+      <div class="kpi-val" id="kCycles">0</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Take Profit</div>
+      <div class="kpi-val" style="color:var(--green)" id="kTP">15000.00</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Status</div>
+      <div style="margin-top:5px"><span class="sbadge idle" id="sBadge">IDLE</span></div>
     </div>
   </div>
-  <div class="ws-pill">
-    <div class="ws-dot" id="wsDot"></div>
-    <span id="wsLabel">DISCONNECTED</span>
-  </div>
-</header>
 
-<!-- ALERT -->
-<div id="alert">
-  <span id="alertIcon">⚠</span>
-  <span id="alertMsg"></span>
-  <span class="alert-close" onclick="hideAlert()">✕</span>
-</div>
+  <!-- MAIN GRID: Left config + Right content -->
+  <div class="main-grid">
 
-<!-- KPI ROW -->
-<div class="kpi-row">
-  <div class="kpi">
-    <div class="kpi-label">Balance</div>
-    <div class="kpi-val accent" id="kBalance">—</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">Total P&amp;L</div>
-    <div class="kpi-val" id="kPL">0.00</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">Max Drawdown</div>
-    <div class="kpi-val neg" id="kDD">0.00</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">Wins / Losses</div>
-    <div class="kpi-val" id="kWL">0 / 0</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">Cycles Done</div>
-    <div class="kpi-val" id="kCycles">0</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">Take Profit</div>
-    <div class="kpi-val" style="color:var(--green)" id="kTP">15000.00</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">Stop Loss</div>
-    <div class="kpi-val" style="color:var(--red)" id="kSL">50000.00</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">Status</div>
-    <div style="margin-top:4px"><span class="sbadge idle" id="sBadge">IDLE</span></div>
-  </div>
-</div>
+    <!-- LEFT: CONFIG PANEL -->
+    <div class="panel" style="display:flex;flex-direction:column">
 
-<!-- SIDE PANELS -->
-<div class="sides">
-  <!-- ODD -->
-  <div class="side odd">
-    <div class="side-hd">📈 ODD (DIGITODD) <span id="oddPending"></span></div>
-    <div class="side-row"><span class="side-lbl">Next Stake</span><span class="side-val" id="oddNextStake">0.35</span></div>
-    <div class="side-row"><span class="side-lbl">Loss List Length</span><span class="side-val" id="oddLen">0</span></div>
-    <div class="side-row"><span class="side-lbl">Wins</span><span class="side-val" style="color:var(--green)" id="oddW">0</span></div>
-    <div class="side-row"><span class="side-lbl">Losses</span><span class="side-val" style="color:var(--red)" id="oddL">0</span></div>
-    <div class="chip-wrap">
-      <div class="chip-lbl">Loss List Stakes</div>
-      <div class="chips" id="oddChips"><span class="chip-empty">empty</span></div>
-    </div>
-  </div>
-  <!-- EVEN -->
-  <div class="side even">
-    <div class="side-hd">📉 EVEN (DIGITEVEN) <span id="evenPending"></span></div>
-    <div class="side-row"><span class="side-lbl">Next Stake</span><span class="side-val" id="evenNextStake">0.35</span></div>
-    <div class="side-row"><span class="side-lbl">Loss List Length</span><span class="side-val" id="evenLen">0</span></div>
-    <div class="side-row"><span class="side-lbl">Wins</span><span class="side-val" style="color:var(--green)" id="evenW">0</span></div>
-    <div class="side-row"><span class="side-lbl">Losses</span><span class="side-val" style="color:var(--red)" id="evenL">0</span></div>
-    <div class="chip-wrap">
-      <div class="chip-lbl">Loss List Stakes</div>
-      <div class="chips" id="evenChips"><span class="chip-empty">empty</span></div>
-    </div>
-  </div>
-</div>
-
-<!-- MAIN GRID: Config + Tick -->
-<div class="main-grid">
-
-  <!-- CONFIG -->
-  <div class="card">
-    <div class="card-title">Authentication &amp; Configuration</div>
-    <div class="oauth-box">
-
-      <!-- Step 1: Login -->
-      <div id="oauthLoginSection">
+      <!-- OAuth login -->
+      <div class="oauth-section" id="oauthLoginSection">
         <a id="oauthLoginBtn" class="oauth-login-btn" href="#" onclick="doOAuthLogin(event)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
           Login with Deriv
         </a>
-        <div id="oauthStatus" style="margin-top:8px"></div>
+        <div id="oauthStatus"></div>
       </div>
 
-      <!-- Step 2: Account selector (shown after OAuth redirect) -->
-      <div id="oauthAcctSection" style="display:none">
-        <div class="oauth-sep">Logged in — select account</div>
-        <div class="oauth-acct-row" style="margin-top:10px">
+      <!-- Account selector -->
+      <div class="oauth-section" id="oauthAcctSection" style="display:none">
+        <div style="font-size:10.5px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Logged in — select account</div>
+        <div class="acct-row">
           <select id="acctSelect" class="acct-select" onchange="onAcctChange()"></select>
-          <span id="acctBadge" class="acct-badge virtual">VIRTUAL</span>
+          <span id="acctBadge" class="acct-badge virtual">DEMO</span>
         </div>
-        <div style="margin-top:6px;font-size:11px;color:var(--muted);font-family:var(--mono)" id="acctInfo"></div>
+        <div id="acctInfo"></div>
       </div>
 
-      <div class="oauth-sep">Bot settings</div>
-
-      <!-- Bot config fields -->
-      <div class="cfg-grid">
-        <div class="field">
-          <label>Initial Stake</label>
-          <input type="number" id="cfgStake" value="0.35" min="0.35" step="0.01"/>
-        </div>
-        <div class="field">
-          <label>Martingale Factor</label>
-          <input type="number" id="cfgMF" value="1.3" min="1.01" step="0.01"/>
-        </div>
-        <div class="field">
-          <label>Take Profit (P&amp;L)</label>
-          <input type="number" id="cfgTP" value="15000" min="0" step="1"/>
-        </div>
-        <div class="field">
-          <label>Stop Loss (P&amp;L)</label>
-          <input type="number" id="cfgSL" value="50000" min="0" step="1"/>
+      <!-- Bot settings -->
+      <div class="config-section">
+        <div class="panel-title" style="margin-bottom:12px">Bot Settings</div>
+        <div class="cfg-grid">
+          <div class="field">
+            <label>Initial Stake</label>
+            <input type="number" id="cfgStake" value="0.35" min="0.35" step="0.01"/>
+          </div>
+          <div class="field">
+            <label>Martingale</label>
+            <input type="number" id="cfgMF" value="1.3" min="1.01" step="0.01"/>
+          </div>
+          <div class="field">
+            <label>Take Profit</label>
+            <input type="number" id="cfgTP" value="15000" min="0" step="1"/>
+          </div>
+          <div class="field">
+            <label>Stop Loss</label>
+            <input type="number" id="cfgSL" value="50000" min="0" step="1"/>
+          </div>
         </div>
       </div>
 
+      <!-- Controls -->
+      <div class="btn-row">
+        <button class="btn btn-connect"    id="btnConn"  onclick="doConnect()"    disabled>Connect</button>
+        <button class="btn btn-disconnect" id="btnDisc"  onclick="doDisconnect()" disabled>Disconnect</button>
+        <button class="btn btn-start"      id="btnStart" onclick="doStart()"      disabled>Start</button>
+        <button class="btn btn-pause"      id="btnPause" onclick="doPause()"      disabled>Pause</button>
+        <button class="btn btn-stop"       id="btnStop"  onclick="doStop()"       disabled>Stop</button>
+      </div>
     </div>
-    <div class="controls">
-      <button class="btn btn-connect"    id="btnConn"  onclick="doConnect()"    disabled>CONNECT</button>
-      <button class="btn btn-disconnect" id="btnDisc"  onclick="doDisconnect()" disabled>DISCONNECT</button>
-      <button class="btn btn-start"      id="btnStart" onclick="doStart()"      disabled>START</button>
-      <button class="btn btn-pause"      id="btnPause" onclick="doPause()"      disabled>PAUSE</button>
-      <button class="btn btn-stop"       id="btnStop"  onclick="doStop()"       disabled>STOP</button>
+
+    <!-- RIGHT: Tick + Sides -->
+    <div class="right-col">
+
+      <!-- Tick progress -->
+      <div class="panel tick-panel">
+        <div class="panel-hd">
+          <span class="panel-title">Tick Progress</span>
+          <span id="tickLbl" style="font-family:'DM Mono',monospace;font-size:12px;color:var(--text2)">0 / 7</span>
+        </div>
+        <div class="panel-body">
+          <div class="tick-progress-wrap">
+            <div class="tick-track"><div class="tick-fill" id="tickFill" style="width:0%"></div></div>
+            <div class="tick-dots" id="tickDots"></div>
+          </div>
+          <div class="tick-live">
+            <div class="tick-live-val" id="lastVal">—</div>
+            <div class="tick-live-time" id="lastTime">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ODD / EVEN sides -->
+      <div class="sides-grid">
+        <!-- ODD -->
+        <div class="side-panel odd">
+          <div class="side-hd">
+            <span class="side-hd-title">ODD</span>
+            <span class="side-pending" id="oddPending"></span>
+          </div>
+          <div class="side-body">
+            <div class="side-row">
+              <span class="side-lbl">Next Stake</span>
+              <span class="side-val" id="oddNextStake">0.35</span>
+            </div>
+            <div class="side-row">
+              <span class="side-lbl">Loss List</span>
+              <span class="side-val" id="oddLen">0</span>
+            </div>
+            <div class="side-row">
+              <span class="side-lbl">Wins</span>
+              <span class="side-val green" id="oddW">0</span>
+            </div>
+            <div class="side-row">
+              <span class="side-lbl">Losses</span>
+              <span class="side-val red" id="oddL">0</span>
+            </div>
+            <div class="chips-wrap">
+              <div class="chips-label">Loss Stakes</div>
+              <div class="chips" id="oddChips"><span class="chip-empty">empty</span></div>
+            </div>
+          </div>
+        </div>
+        <!-- EVEN -->
+        <div class="side-panel even">
+          <div class="side-hd">
+            <span class="side-hd-title">EVEN</span>
+            <span class="side-pending" id="evenPending"></span>
+          </div>
+          <div class="side-body">
+            <div class="side-row">
+              <span class="side-lbl">Next Stake</span>
+              <span class="side-val" id="evenNextStake">0.35</span>
+            </div>
+            <div class="side-row">
+              <span class="side-lbl">Loss List</span>
+              <span class="side-val" id="evenLen">0</span>
+            </div>
+            <div class="side-row">
+              <span class="side-lbl">Wins</span>
+              <span class="side-val green" id="evenW">0</span>
+            </div>
+            <div class="side-row">
+              <span class="side-lbl">Losses</span>
+              <span class="side-val red" id="evenL">0</span>
+            </div>
+            <div class="chips-wrap">
+              <div class="chips-label">Loss Stakes</div>
+              <div class="chips" id="evenChips"><span class="chip-empty">empty</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /right-col -->
+  </div><!-- /main-grid -->
+
+  <!-- LOGS -->
+  <div class="log-grid">
+
+    <!-- Activity log -->
+    <div class="log-panel">
+      <div class="log-hd">
+        <span class="log-title">Activity Log</span>
+        <button class="log-clear" onclick="document.getElementById('log').innerHTML=''">Clear</button>
+      </div>
+      <div id="log"></div>
     </div>
+
+    <!-- Trade history -->
+    <div class="log-panel">
+      <div class="log-hd">
+        <span class="log-title">Trade History</span>
+        <button class="log-clear" onclick="clearHistory()">Clear</button>
+      </div>
+      <div class="hist-wrap" id="histWrap">
+        <table class="hist-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Type</th>
+              <th>Stake</th>
+              <th>Payout</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="histBody">
+            <tr><td colspan="5" class="hist-empty">No trades yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
   </div>
 
-  <!-- TICK PROGRESS -->
-  <div class="card">
-    <div class="card-title">Tick Progress</div>
-    <div class="tick-hd"><span>Cycle Progress</span><span id="tickLbl">0 / 5</span></div>
-    <div class="tick-track"><div class="tick-fill" id="tickFill" style="width:0%"></div></div>
-    <div class="tick-dots" id="tickDots"></div>
-    <div style="margin-top:20px">
-      <div class="card-title">Last Tick Value</div>
-      <div class="last-tick-val" id="lastVal">—</div>
-      <div class="last-tick-time" id="lastTime">—</div>
-    </div>
-  </div>
-</div>
+</div><!-- /app -->
 
-<!-- LOGS: Activity + History -->
-<div class="log-grid">
-  <div class="card" style="margin-bottom:0">
-    <div class="card-title" style="justify-content:space-between">
-      <span style="letter-spacing:3px">Activity Log</span>
-      <button onclick="document.getElementById('log').innerHTML=''" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;letter-spacing:1px">CLEAR</button>
-    </div>
-    <div id="log"></div>
-  </div>
-  <div class="card" style="margin-bottom:0">
-    <div class="card-title" style="justify-content:space-between">
-      <span style="letter-spacing:3px">Trade History</span>
-      <button onclick="document.getElementById('histLog').innerHTML=''" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;letter-spacing:1px">CLEAR</button>
-    </div>
-    <div id="histLog"></div>
-  </div>
-</div>
-
-</div><!-- /wrap -->
 <script>
 'use strict';
 
@@ -350,8 +664,8 @@ let botState    = 'idle';
 let currency    = 'USD';
 let initStake   = 0.35;
 let mFactor     = 1.3;
-let tpTarget    = 15000;   // Take Profit threshold (total P&L)
-let slTarget    = 50000;   // Stop Loss threshold  (total P&L, compared as negative)
+let tpTarget    = 15000;
+let slTarget    = 50000;
 
 let balance     = null;
 let startBal    = null;
@@ -360,37 +674,42 @@ let maxDD       = 0;
 let wins        = 0;
 let losses      = 0;
 let cycleCount  = 0;
-let tickCount   = 0;   // ticks in current cycle
+let tickCount   = 0;
 
-let oddList     = [];  // loss stakes for ODD side
-let evenList    = [];  // loss stakes for EVEN side
+let oddList     = [];
+let evenList    = [];
+let oddW = 0, oddL = 0, evenW = 0, evenL = 0;
 
-let oddW        = 0, oddL = 0, evenW = 0, evenL = 0;
-
-// Settling
 let settling    = false;
-let settled     = 0;          // how many of the pair settled
-let pOdd        = null;       // { cid, stake }
+let settled     = 0;
+let pOdd        = null;
 let pEven       = null;
 
-// req_id → callback(contractId)
 const buyCbs    = {};
-
-// contract_id → subscription_id (for forget after settlement)
 const pocSubs   = {};
-
-// monotone req_id
 let _rid        = 1;
 const nextRid   = () => _rid++;
 
-// ─── OAUTH ACCOUNTS ───────────────────────────────────────────────────────────
-// Each entry: { acct, token, currency, isVirtual }
 let oauthAccounts = [];
 let activeToken   = null;
 
-// ─── OAUTH 2.0 + PKCE FLOW (new Deriv platform) ──────────────────────────────
+// ─── THEME ────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  g('themeBtn').textContent = isDark ? '🌙' : '☀️';
+  localStorage.setItem('digitbot-theme', isDark ? 'light' : 'dark');
+}
+(function() {
+  const saved = localStorage.getItem('digitbot-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  document.addEventListener('DOMContentLoaded', () => {
+    g('themeBtn').textContent = saved === 'dark' ? '🌙' : '☀️';
+  });
+})();
 
-// Generate a cryptographically random code_verifier
+// ─── OAUTH 2.0 + PKCE FLOW ────────────────────────────────────────────────────
 function generateCodeVerifier() {
   const array = crypto.getRandomValues(new Uint8Array(64));
   return Array.from(array)
@@ -398,14 +717,12 @@ function generateCodeVerifier() {
     .join('');
 }
 
-// Derive code_challenge = BASE64URL(SHA256(verifier))
 async function generateCodeChallenge(verifier) {
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
   return btoa(String.fromCharCode(...new Uint8Array(hash)))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-// Generate random state for CSRF protection
 function generateState() {
   return crypto.getRandomValues(new Uint8Array(16))
     .reduce((s, b) => s + b.toString(16).padStart(2, '0'), '');
@@ -413,57 +730,35 @@ function generateState() {
 
 async function doOAuthLogin(e) {
   e.preventDefault();
-
-  const codeVerifier    = generateCodeVerifier();
-  const codeChallenge   = await generateCodeChallenge(codeVerifier);
-  const state           = generateState();
-
-  // Store before redirect — survive the page navigation
+  const codeVerifier  = generateCodeVerifier();
+  const codeChallenge = await generateCodeChallenge(codeVerifier);
+  const state         = generateState();
   sessionStorage.setItem('pkce_code_verifier', codeVerifier);
   sessionStorage.setItem('oauth_state', state);
-
   const params = new URLSearchParams({
-    response_type:          'code',
-    client_id:              APP_ID,
-    redirect_uri:           REDIRECT_URI,
-    scope:                  'trade account_manage',
-    state:                  state,
-    code_challenge:         codeChallenge,
-    code_challenge_method:  'S256',
+    response_type: 'code', client_id: APP_ID, redirect_uri: REDIRECT_URI,
+    scope: 'trade account_manage', state,
+    code_challenge: codeChallenge, code_challenge_method: 'S256',
   });
-
   window.location.href = AUTH_ENDPOINT + '?' + params.toString();
 }
 
-// Exchange the authorization code for an access token (called after redirect back)
 async function exchangeCodeForToken(code) {
   const codeVerifier = sessionStorage.getItem('pkce_code_verifier');
   if (!codeVerifier) throw new Error('Missing PKCE code_verifier in sessionStorage');
-
   const body = new URLSearchParams({
-    grant_type:    'authorization_code',
-    client_id:     APP_ID,
-    code:          code,
-    code_verifier: codeVerifier,
-    redirect_uri:  REDIRECT_URI,
+    grant_type: 'authorization_code', client_id: APP_ID,
+    code, code_verifier: codeVerifier, redirect_uri: REDIRECT_URI,
   });
-
   const res = await fetch(TOKEN_ENDPOINT, {
-    method:  'POST',
+    method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body:    body.toString(),
+    body: body.toString(),
   });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error('Token exchange failed: ' + err);
-  }
-
-  // Clear PKCE values immediately after successful exchange
+  if (!res.ok) { const err = await res.text(); throw new Error('Token exchange failed: ' + err); }
   sessionStorage.removeItem('pkce_code_verifier');
   sessionStorage.removeItem('oauth_state');
-
-  return res.json(); // { access_token, expires_in, token_type }
+  return res.json();
 }
 
 function buildAcctSelector(accounts) {
@@ -482,8 +777,6 @@ function onAcctChange() {
   const idx  = parseInt(g('acctSelect').value);
   const acct = oauthAccounts[idx];
   if (!acct) return;
-  // In the new platform, activeToken is the Bearer access_token;
-  // the authorize WS call uses it directly.
   activeToken = acct.token;
   currency    = acct.currency;
   const badge = g('acctBadge');
@@ -494,50 +787,33 @@ function onAcctChange() {
 }
 
 // ─── WEBSOCKET ────────────────────────────────────────────────────────────────
-
 let _pingTimer = null;
-
 function startPing() {
   stopPing();
   _pingTimer = setInterval(() => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      wsSend({ ping: 1 });
-    }
-  }, 20000); // ping every 20 s to keep connection alive
+    if (ws && ws.readyState === WebSocket.OPEN) wsSend({ ping: 1 });
+  }, 20000);
 }
-
 function stopPing() {
   if (_pingTimer) { clearInterval(_pingTimer); _pingTimer = null; }
 }
 
-// Fetch all accounts (demo + real) from REST API
 async function fetchAccounts() {
   const res = await fetch(API_BASE + '/trading/v1/options/accounts', {
-    headers: {
-      'Authorization': 'Bearer ' + activeToken,
-      'Deriv-App-ID':  APP_ID,
-    },
+    headers: { 'Authorization': 'Bearer ' + activeToken, 'Deriv-App-ID': APP_ID },
   });
   const text = await res.text();
   addLog('[DEBUG] Accounts raw: ' + text.slice(0, 300), 'info');
   if (!res.ok) throw new Error('Accounts fetch failed (' + res.status + '): ' + text);
   const json = JSON.parse(text);
-  // Normalise: API may return { data: [...] } or { accounts: [...] } or [...]
   return json.data || json.accounts || (Array.isArray(json) ? json : [json]);
 }
 
-// Get a one-time WebSocket URL for a specific account
 async function fetchOtpWsUrl(accountId) {
-  const res = await fetch(
-    API_BASE + '/trading/v1/options/accounts/' + accountId + '/otp',
-    {
-      method:  'POST',
-      headers: {
-        'Authorization': 'Bearer ' + activeToken,
-        'Deriv-App-ID':  APP_ID,
-      },
-    }
-  );
+  const res = await fetch(API_BASE + '/trading/v1/options/accounts/' + accountId + '/otp', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + activeToken, 'Deriv-App-ID': APP_ID },
+  });
   const text = await res.text();
   addLog('[DEBUG] OTP raw: ' + text.slice(0, 300), 'info');
   if (!res.ok) throw new Error('OTP fetch failed (' + res.status + '): ' + text);
@@ -547,52 +823,41 @@ async function fetchOtpWsUrl(accountId) {
   return wsUrl;
 }
 
-// Detect demo vs real from the OTP WebSocket URL path
-function isDemoUrl(wsUrl) {
-  return wsUrl.includes('/ws/demo');
-}
+function isDemoUrl(wsUrl) { return wsUrl.includes('/ws/demo'); }
 
 async function doConnect() {
   if (!activeToken) { alert2('Please log in with Deriv first.'); return; }
-
   initStake = parseFloat(g('cfgStake').value) || 0.35;
   mFactor   = parseFloat(g('cfgMF').value)    || 1.3;
-
   hideAlert();
   dot('connecting'); lbl('FETCHING ACCOUNTS…');
   addLog('Fetching accounts from Deriv…', 'info');
   refreshBtns();
 
-  // ── Fetch account list ──────────────────────────────────────────────────────
   let accounts;
-  try {
-    accounts = await fetchAccounts();
-  } catch (err) {
+  try { accounts = await fetchAccounts(); }
+  catch (err) {
     dot('error'); lbl('DISCONNECTED');
     addLog('Account fetch error: ' + err.message, 'err');
     alert2('Could not load accounts: ' + err.message);
-    refreshBtns();
-    return;
+    refreshBtns(); return;
   }
 
   if (!accounts || accounts.length === 0) {
     dot('error'); lbl('DISCONNECTED');
-    addLog('No Options accounts found. Check the DEBUG line above for the raw response.', 'err');
+    addLog('No Options accounts found.', 'err');
     alert2('No Options accounts found.');
-    refreshBtns();
-    return;
+    refreshBtns(); return;
   }
 
-  // Normalise account objects — log all keys so we can see the real field names
   addLog('[DEBUG] First account keys: ' + Object.keys(accounts[0]).join(', '), 'info');
 
   oauthAccounts = accounts.map(a => {
-    // Try every plausible field name for id, currency, virtual flag, balance
-    const id       = a.id || a.loginid || a.account_id || a.accountId || '?';
-    const cur      = (a.currency || a.cur || 'USD').toUpperCase();
-    const isVirt   = !!(a.is_virtual || a.isVirtual || a.demo || a.is_demo ||
-                        (typeof id === 'string' && id.toUpperCase().startsWith('VR')));
-    const bal      = a.balance != null ? parseFloat(a.balance) : null;
+    const id     = a.id || a.loginid || a.account_id || a.accountId || '?';
+    const cur    = (a.currency || a.cur || 'USD').toUpperCase();
+    const isVirt = !!(a.is_virtual || a.isVirtual || a.demo || a.is_demo ||
+                      (typeof id === 'string' && id.toUpperCase().startsWith('VR')));
+    const bal    = a.balance != null ? parseFloat(a.balance) : null;
     return { acct: id, token: activeToken, currency: cur, isVirtual: isVirt, balance: bal };
   });
 
@@ -600,67 +865,51 @@ async function doConnect() {
   g('oauthAcctSection').style.display  = '';
   buildAcctSelector(oauthAccounts);
 
-  // ── Get OTP for selected account ─────────────────────────────────────────
   const idx     = parseInt(g('acctSelect').value) || 0;
   const selAcct = oauthAccounts[idx];
-
   addLog('Fetching OTP WebSocket URL for ' + selAcct.acct + '…', 'info');
   dot('connecting'); lbl('CONNECTING…');
 
   let wsUrl;
-  try {
-    wsUrl = await fetchOtpWsUrl(selAcct.acct);
-  } catch (err) {
+  try { wsUrl = await fetchOtpWsUrl(selAcct.acct); }
+  catch (err) {
     dot('error'); lbl('DISCONNECTED');
     addLog('OTP error: ' + err.message, 'err');
     alert2('WebSocket setup failed: ' + err.message);
-    refreshBtns();
-    return;
+    refreshBtns(); return;
   }
 
-  // Confirm account type from URL path (most reliable source)
   const isVirtualFromUrl = isDemoUrl(wsUrl);
   selAcct.isVirtual = isVirtualFromUrl;
-  // Refresh badge now we know for sure
   const badge = g('acctBadge');
   badge.textContent = isVirtualFromUrl ? 'DEMO' : 'REAL';
   badge.className   = 'acct-badge' + (isVirtualFromUrl ? ' virtual' : '');
 
   addLog('Connecting to Deriv WebSocket (' + (isVirtualFromUrl ? 'DEMO' : 'REAL') + ')…', 'info');
-  try { ws = new WebSocket(wsUrl); } catch (e) { alert2('Cannot open WebSocket: ' + e.message); return; }
+  try { ws = new WebSocket(wsUrl); }
+  catch (e) { alert2('Cannot open WebSocket: ' + e.message); return; }
 
   ws.onopen = () => {
     connected  = true;
     authorized = true;
     currency   = selAcct.currency;
-    if (selAcct.balance != null) { balance = selAcct.balance; }
+    if (selAcct.balance != null) balance = selAcct.balance;
     dot('connected'); lbl('CONNECTED');
-    addLog('✓ Connected: ' + selAcct.acct +
-           ' | ' + (isVirtualFromUrl ? 'DEMO' : 'REAL') +
-           ' | ' + selAcct.currency, 'ok');
-    updateKPIs();
-    refreshBtns();
-    lockCfg(true);
-    startPing();
+    addLog('✓ Connected: ' + selAcct.acct + ' | ' + (isVirtualFromUrl ? 'DEMO' : 'REAL') + ' | ' + selAcct.currency, 'ok');
+    updateKPIs(); refreshBtns(); lockCfg(true); startPing();
     wsSend({ balance: 1, subscribe: 1 });
-    wsSend({ transaction: 1, subscribe: 1 });   // real-time settlement via transaction stream
+    wsSend({ transaction: 1, subscribe: 1 });
   };
 
   ws.onclose = (e) => {
-    connected = false; authorized = false;
-    stopPing();
+    connected = false; authorized = false; stopPing();
     dot('error'); lbl('DISCONNECTED');
     addLog('WS closed (code ' + e.code + (e.reason ? ' – ' + e.reason : '') + ').', 'err');
     if (botState === 'running' || botState === 'settling') setStatus('stopped');
-    settling = false;
-    lockCfg(false);
-    refreshBtns();
+    settling = false; lockCfg(false); refreshBtns();
   };
 
-  ws.onerror = () => {
-    dot('error');
-    addLog('WebSocket error.', 'err');
-  };
+  ws.onerror = () => { dot('error'); addLog('WebSocket error.', 'err'); };
 
   ws.onmessage = (e) => {
     try {
@@ -678,20 +927,15 @@ async function doConnect() {
 function doDisconnect() {
   if (botState === 'running' || botState === 'settling') doStop();
   if (ws) { try { ws.close(); } catch(_){} ws = null; }
-  connected = false; authorized = false;
-  stopPing();
+  connected = false; authorized = false; stopPing();
   dot(''); lbl('DISCONNECTED');
-  setStatus('idle');
-  lockCfg(false);
-  refreshBtns();
+  setStatus('idle'); lockCfg(false); refreshBtns();
   addLog('Disconnected.', 'warn');
 }
 
-// Safe WS send – attaches fresh req_id
 function wsSend(obj) {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
-    addLog('Cannot send — WS not open.', 'err');
-    return null;
+    addLog('Cannot send — WS not open.', 'err'); return null;
   }
   const rid = nextRid();
   obj.req_id = rid;
@@ -709,7 +953,7 @@ function dispatch(msg) {
     case 'buy':                    onBuy(msg);         break;
     case 'transaction':            onTransaction(msg); break;
     case 'proposal_open_contract': onPOC(msg);         break;
-    case 'ping':                   /* keepalive – ignore */ break;
+    case 'ping': break;
     default: break;
   }
 }
@@ -719,40 +963,30 @@ function onError(msg) {
   const code = msg.error.code    || '';
   const text = msg.error.message || 'Unknown error';
   addLog(`API error [${msg.msg_type}] ${code}: ${text}`, 'err');
-
   if (msg.msg_type === 'authorize') {
     alert2(`Authorization failed: ${text}`);
     connected = false; authorized = false;
-    dot('error'); lockCfg(false); refreshBtns();
-    return;
+    dot('error'); lockCfg(false); refreshBtns(); return;
   }
   if (msg.msg_type === 'buy') {
     alert2(`Buy failed: ${text}. Bot paused.`);
-    // If one buy failed we must still wait for the other side to settle
-    // or if neither was placed yet, just pause immediately.
-    settling = false;
-    pauseBot();
-    return;
+    settling = false; pauseBot(); return;
   }
 }
 
 // ─── AUTHORIZE ────────────────────────────────────────────────────────────────
-// With OTP-based WebSocket, authorization is implicit on connect.
-// This handler is kept for safety in case a legacy authorize response arrives.
 function onAuth(msg) {
   if (!msg.authorize) return;
   authorized = true;
   const auth = msg.authorize;
-  if (auth.balance) balance = parseFloat(auth.balance);
+  if (auth.balance)  balance  = parseFloat(auth.balance);
   if (auth.currency) currency = auth.currency;
   addLog(`✓ Authorized: ${auth.loginid} | Bal: ${balance != null ? balance.toFixed(2) : '—'} ${currency}`, 'ok');
-  updateKPIs();
-  refreshBtns();
+  updateKPIs(); refreshBtns();
 }
 
 // ─── BALANCE ──────────────────────────────────────────────────────────────────
 function onBal(msg) {
-  // New API may return msg.balance.balance (legacy shape) or msg.balance directly
   const b = msg.balance;
   if (!b) return;
   const raw = b.balance != null ? b.balance : b.amount != null ? b.amount : b;
@@ -768,72 +1002,48 @@ function onBal(msg) {
 
 // ─── TICK ─────────────────────────────────────────────────────────────────────
 function onTick(msg) {
-  // Only count ticks when actively running (not settling, not paused)
   if (botState !== 'running') return;
-
   const q   = msg.tick.quote;
   const epo = msg.tick.epoch;
-
   g('lastVal').textContent  = q;
   g('lastTime').textContent = new Date(epo * 1000).toLocaleTimeString();
-
   tickCount++;
   renderTickUI();
   addLog(`Tick ${tickCount}/${NCYCLE}: ${q}`);
-
   if (tickCount >= NCYCLE) {
-    tickCount = 0;
-    renderTickUI();
-    executeCycle();
+    tickCount = 0; renderTickUI(); executeCycle();
   }
 }
 
 // ─── BUY RESPONSE ─────────────────────────────────────────────────────────────
 function onBuy(msg) {
-  // req_id can live at msg.req_id or msg.echo_req.req_id
   const rid = (msg.echo_req && msg.echo_req.req_id) || msg.req_id;
   const cb  = buyCbs[rid];
   if (cb) { delete buyCbs[rid]; cb(msg.buy.contract_id, msg.buy); }
 }
 
 // ─── TRANSACTION STREAM (primary settlement path) ─────────────────────────────
-// The new OTP WebSocket does not reliably push proposal_open_contract events.
-// Instead we subscribe to the transaction stream. Every contract settlement
-// fires an action_type="sell" transaction containing the contract_id and the
-// payout amount received (0 if lost, full payout if won).
 let _txDebugCount = 0;
 function onTransaction(msg) {
   const tx = msg.transaction;
   if (!tx) return;
-
-  // Log the first 3 raw transactions so we can confirm field names in the live environment
   if (_txDebugCount < 3) {
     addLog('[TX DEBUG] ' + JSON.stringify(tx).slice(0, 250), 'info');
     _txDebugCount++;
   }
-
-  // Deriv sends action_type: "sell" when a contract settles (auto-sold at expiry)
-  // Some API versions may use tx.action — handle both defensively
   const action = tx.action_type || tx.action || '';
   if (action !== 'sell') return;
-
   const cid = tx.contract_id;
   if (!cid) return;
-
   let side = null;
   if      (pOdd  && pOdd.cid  === cid) side = 'ODD';
   else if (pEven && pEven.cid === cid) side = 'EVEN';
-  if (!side) return;   // not one of our current contracts
-
-  // tx.amount = payout credited to account on settlement.
-  // Positive = received payout (win). 0 or absent = no payout (loss).
+  if (!side) return;
   const stake  = side === 'ODD' ? pOdd.stake : pEven.stake;
   const payout = parseFloat(tx.amount || 0);
-  // profit = payout received minus what we paid (stake)
   const profit = parseFloat((payout > 0 ? payout - stake : -stake).toFixed(2));
   const won    = payout > 0;
-
-  settleContract(side, stake, profit, won, cid);
+  settleContract(side, stake, profit, won, cid, payout);
 }
 
 // ─── PROPOSAL OPEN CONTRACT (secondary / legacy fallback) ─────────────────────
@@ -841,76 +1051,56 @@ function onPOC(msg) {
   const poc = msg.proposal_open_contract;
   if (!poc) return;
   if (poc.id) pocSubs[poc.contract_id] = poc.id;
-
   const isSold = poc.is_sold === true || poc.is_sold === 1;
   if (!isSold) return;
-
   const cid = poc.contract_id;
-
-  // Skip if already handled by onTransaction
   let side = null;
   if      (pOdd  && pOdd.cid  === cid) side = 'ODD';
   else if (pEven && pEven.cid === cid) side = 'EVEN';
   if (!side) return;
-
   if (pocSubs[cid]) { wsSend({ forget: pocSubs[cid] }); delete pocSubs[cid]; }
-
   const stake  = side === 'ODD' ? pOdd.stake : pEven.stake;
   const profit = parseFloat((poc.profit || 0).toFixed(2));
+  const payout = profit > 0 ? stake + profit : 0;
   const won    = profit > 0;
-
-  settleContract(side, stake, profit, won, cid);
+  settleContract(side, stake, profit, won, cid, payout);
 }
 
 // ─── SHARED SETTLEMENT LOGIC ──────────────────────────────────────────────────
-// Deduplicated via a settled-contract ID set so onTransaction + onPOC can't
-// double-count if both happen to fire.
 const settledCids = new Set();
 
-function settleContract(side, stake, profit, won, cid) {
-  if (settledCids.has(cid)) return;   // already processed
+function settleContract(side, stake, profit, won, cid, payout) {
+  if (settledCids.has(cid)) return;
   settledCids.add(cid);
-
   totalPL = parseFloat((totalPL + profit).toFixed(2));
-
   if (side === 'ODD') {
     if (won) {
-      oddW++; wins++;
-      oddList = [];
+      oddW++; wins++; oddList = [];
       addLog(`✓ ODD WIN   profit=+${profit.toFixed(2)} ${currency}`, 'ok');
-      addHistory('ODD', 'WIN', stake, profit);
+      addHistory('ODD', 'WIN', stake, payout || 0, profit);
     } else {
-      oddL++; losses++;
-      oddList.push(stake);
+      oddL++; losses++; oddList.push(stake);
       addLog(`✗ ODD LOSS  stake=${stake.toFixed(2)}  net=${profit.toFixed(2)} ${currency}`, 'err');
-      addHistory('ODD', 'LOSS', stake, profit);
+      addHistory('ODD', 'LOSS', stake, 0, profit);
     }
   } else {
     if (won) {
-      evenW++; wins++;
-      evenList = [];
+      evenW++; wins++; evenList = [];
       addLog(`✓ EVEN WIN  profit=+${profit.toFixed(2)} ${currency}`, 'ok');
-      addHistory('EVEN', 'WIN', stake, profit);
+      addHistory('EVEN', 'WIN', stake, payout || 0, profit);
     } else {
-      evenL++; losses++;
-      evenList.push(stake);
+      evenL++; losses++; evenList.push(stake);
       addLog(`✗ EVEN LOSS stake=${stake.toFixed(2)}  net=${profit.toFixed(2)} ${currency}`, 'err');
-      addHistory('EVEN', 'LOSS', stake, profit);
+      addHistory('EVEN', 'LOSS', stake, 0, profit);
     }
   }
-
   settled++;
-  updateSides();
-  updateKPIs();
-
+  updateSides(); updateKPIs();
   if (settled >= 2) {
-    rebalance();
-    updateSides();
+    rebalance(); updateSides();
     settling = false;
     g('oddPending').textContent  = '';
     g('evenPending').textContent = '';
-
-    // ── TP / SL check ──────────────────────────────────────────────────────
     if (totalPL >= tpTarget) {
       addLog(`🎯 TAKE PROFIT reached (+${totalPL.toFixed(2)} ${currency}). Bot stopped.`, 'ok');
       alert2(`Take Profit reached! Net P&L: +${totalPL.toFixed(2)} ${currency}`, 'ok');
@@ -921,7 +1111,6 @@ function settleContract(side, stake, profit, won, cid) {
       alert2(`Stop Loss reached! Net P&L: ${totalPL.toFixed(2)} ${currency}`);
       doStop(); return;
     }
-
     if (botState === 'settling') {
       setStatus('running');
       addLog('Both contracts settled. Resuming tick count…', 'info');
@@ -938,7 +1127,6 @@ function calcStake(list) {
 }
 
 // ─── REBALANCE ────────────────────────────────────────────────────────────────
-// If one list has >2 items AND the other is empty → move the minimum item across
 function rebalance() {
   if (oddList.length > 2 && evenList.length === 0) {
     const min = Math.min(...oddList);
@@ -957,93 +1145,67 @@ function rebalance() {
 function executeCycle() {
   if (settling) { addLog('Already settling — cycle skipped.', 'warn'); return; }
   if (botState !== 'running') return;
-
-  const os = +(calcStake(oddList).toFixed(2));
-  const es = +(calcStake(evenList).toFixed(2));
+  const os   = +(calcStake(oddList).toFixed(2));
+  const es   = +(calcStake(evenList).toFixed(2));
   const need = os + es;
-
   if (balance !== null && need > balance) {
     alert2(`Insufficient balance — need ${need.toFixed(2)} ${currency}, have ${balance.toFixed(2)}. Bot paused.`);
     addLog(`⚠ Balance too low (${balance.toFixed(2)} < ${need.toFixed(2)}). Pausing.`, 'warn');
-    pauseBot();
-    return;
+    pauseBot(); return;
   }
-
   cycleCount++;
-  settling = true;
-  settled  = 0;
-  pOdd     = null;
-  pEven    = null;
-  settledCids.clear();   // reset dedup for this cycle
-
-  setStatus('settling');
-  refreshBtns();
+  settling = true; settled = 0; pOdd = null; pEven = null;
+  settledCids.clear();
+  setStatus('settling'); refreshBtns();
   addLog(`── Cycle ${cycleCount} | ODD stake=${os} | EVEN stake=${es} ──`, 'info');
 
-  // ── Buy DIGITODD ──
   const ridOdd = nextRid();
   buyCbs[ridOdd] = (cid) => {
     pOdd = { cid, stake: os };
     g('oddPending').textContent = '⏳';
     addLog(`✓ DIGITODD  bought #${cid}`, 'ok');
-    // No proposal_open_contract subscribe needed — transaction stream handles settlement
   };
   wsSendBuy('DIGITODD', os, ridOdd);
 
-  // ── Buy DIGITEVEN immediately (no delay — req_id is pre-allocated) ──
   const ridEven = nextRid();
   buyCbs[ridEven] = (cid) => {
     pEven = { cid, stake: es };
     g('evenPending').textContent = '⏳';
     addLog(`✓ DIGITEVEN bought #${cid}`, 'ok');
-    // No proposal_open_contract subscribe needed — transaction stream handles settlement
   };
   wsSendBuy('DIGITEVEN', es, ridEven);
 
-  // ── Settlement timeout failsafe (10 s) ──────────────────────────────────
-  // If the transaction stream never fires for one/both contracts, unstick the bot.
   const cycleSnapshot = cycleCount;
   setTimeout(() => {
-    if (!settling || cycleCount !== cycleSnapshot) return;  // already resolved
+    if (!settling || cycleCount !== cycleSnapshot) return;
     addLog('⚠ Settlement timeout — forcing cycle resolution.', 'warn');
-
-    // For each unsettled side, record a loss via the shared settlement path
     if (pOdd && !settledCids.has(pOdd.cid)) {
       addLog(`⚠ ODD timeout — recording as loss (stake=${pOdd.stake.toFixed(2)})`, 'warn');
-      settleContract('ODD', pOdd.stake, -pOdd.stake, false, pOdd.cid);
+      settleContract('ODD', pOdd.stake, -pOdd.stake, false, pOdd.cid, 0);
     }
     if (pEven && !settledCids.has(pEven.cid)) {
       addLog(`⚠ EVEN timeout — recording as loss (stake=${pEven.stake.toFixed(2)})`, 'warn');
-      settleContract('EVEN', pEven.stake, -pEven.stake, false, pEven.cid);
+      settleContract('EVEN', pEven.stake, -pEven.stake, false, pEven.cid, 0);
     }
   }, 10000);
 }
 
-// Low-level buy sender — uses the pre-allocated rid so buyCbs[rid] works
 function wsSendBuy(type, stake, rid) {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
-    addLog('WS not open — cannot buy.', 'err');
-    return;
+    addLog('WS not open — cannot buy.', 'err'); return;
   }
   ws.send(JSON.stringify({
-    buy: '1',                     // '1' = buy immediately without prior proposal
-    price: 1000,                  // max acceptable price (safety cap)
+    buy: '1', price: 1000,
     parameters: {
-      contract_type:     type,
-      currency:          currency,
-      underlying_symbol: SYMBOL,
-      duration:          1,
-      duration_unit:     't',
-      basis:             'stake',
-      amount:            stake
+      contract_type: type, currency, underlying_symbol: SYMBOL,
+      duration: 1, duration_unit: 't', basis: 'stake', amount: stake,
     },
-    req_id: rid
+    req_id: rid,
   }));
 }
 
 // ─── BOT CONTROLS ─────────────────────────────────────────────────────────────
 function doStart() {
-  // Hard reset all tracking vars
   oddList = []; evenList = [];
   oddW = 0; oddL = 0; evenW = 0; evenL = 0;
   wins = 0; losses = 0; cycleCount = 0; tickCount = 0;
@@ -1052,48 +1214,33 @@ function doStart() {
   pOdd = null; pEven = null;
   settledCids.clear();
   startBal = balance;
-
-  // Re-read config (fields are locked but values still readable)
   initStake = parseFloat(g('cfgStake').value) || 0.35;
   mFactor   = parseFloat(g('cfgMF').value)    || 1.3;
   tpTarget  = parseFloat(g('cfgTP').value)    || 15000;
   slTarget  = parseFloat(g('cfgSL').value)    || 50000;
-
-  hideAlert();
-  updateSides();
-  updateKPIs();
-  renderTickUI();
+  hideAlert(); updateSides(); updateKPIs(); renderTickUI();
   g('oddPending').textContent  = '';
   g('evenPending').textContent = '';
-
-  setStatus('running');
-  refreshBtns();
+  setStatus('running'); refreshBtns();
   addLog('════════ Bot STARTED ════════', 'ok');
-
-  // Fresh tick subscription
   wsSend({ ticks: SYMBOL, subscribe: 1 });
 }
 
 function doPause() {
   if (botState === 'paused') {
-    setStatus('running');
-    addLog('Bot RESUMED.', 'ok');
+    setStatus('running'); addLog('Bot RESUMED.', 'ok');
     wsSend({ ticks: SYMBOL, subscribe: 1 });
-  } else {
-    pauseBot();
-  }
+  } else { pauseBot(); }
   refreshBtns();
 }
 
 function pauseBot() {
-  setStatus('paused');
-  addLog('Bot PAUSED.', 'warn');
+  setStatus('paused'); addLog('Bot PAUSED.', 'warn');
   wsSend({ forget_all: 'ticks' });
 }
 
 function doStop() {
-  setStatus('stopped');
-  settling = false;
+  setStatus('stopped'); settling = false;
   g('oddPending').textContent  = '';
   g('evenPending').textContent = '';
   wsSend({ forget_all: 'ticks' });
@@ -1104,7 +1251,6 @@ function doStop() {
 
 // ─── UI HELPERS ───────────────────────────────────────────────────────────────
 const g = id => document.getElementById(id);
-
 function dot(cls)  { g('wsDot').className   = 'ws-dot ' + cls; }
 function lbl(text) { g('wsLabel').textContent = text; }
 
@@ -1116,16 +1262,15 @@ function setStatus(s) {
 }
 
 function refreshBtns() {
-  const auth    = connected && authorized;
-  const active  = botState === 'running' || botState === 'settling';
+  const auth     = connected && authorized;
+  const active   = botState === 'running' || botState === 'settling';
   const hasToken = !!activeToken;
-
   g('btnConn').disabled  = !hasToken || connected;
   g('btnDisc').disabled  = !connected;
   g('btnStart').disabled = !auth || active;
   g('btnPause').disabled = !auth || (!active && botState !== 'paused');
   g('btnStop').disabled  = !auth || botState === 'idle' || botState === 'stopped';
-  g('btnPause').textContent = botState === 'paused' ? 'RESUME' : 'PAUSE';
+  g('btnPause').textContent = botState === 'paused' ? 'Resume' : 'Pause';
 }
 
 function lockCfg(lock) {
@@ -1151,25 +1296,37 @@ function addLog(msg, cls = '') {
   while (box.children.length > 400) box.removeChild(box.firstChild);
 }
 
-function addHistory(side, result, stake, profit) {
-  const box  = g('histLog');
+function addHistory(side, result, stake, payout, profit) {
+  const tbody = g('histBody');
+  // Remove "no trades" placeholder
+  const ph = tbody.querySelector('.hist-empty');
+  if (ph) ph.parentElement.remove();
+
   const t    = new Date().toTimeString().slice(0, 8);
-  const cls  = result === 'WIN' ? 'ok' : 'err';
+  const tr   = document.createElement('tr');
   const sign = profit >= 0 ? '+' : '';
-  const sideColor = side === 'ODD' ? 'var(--accent)' : 'var(--accent2)';
-  const line = document.createElement('div');
-  line.className = 'll';
-  line.innerHTML =
-    `<span class="lt">${t}</span>` +
-    `<span class="lm ${cls}">` +
-    `<span style="color:${sideColor};min-width:36px;display:inline-block">${side}</span> ` +
-    `${result} ` +
-    `<span style="color:var(--muted)">stake=${stake.toFixed(2)}</span> ` +
-    `<span style="${profit>=0?'color:var(--green)':'color:var(--red)'}">${sign}${profit.toFixed(2)} ${currency}</span>` +
-    `</span>`;
-  box.appendChild(line);
-  box.scrollTop = box.scrollHeight;
-  while (box.children.length > 400) box.removeChild(box.firstChild);
+  const profitColor = profit >= 0 ? 'var(--green)' : 'var(--red)';
+  const typeClass   = side === 'ODD' ? 'hist-type-odd' : 'hist-type-even';
+  const statusHtml  = result === 'WIN'
+    ? `<span class="hist-win">WIN</span>`
+    : `<span class="hist-loss">LOSS</span>`;
+
+  tr.innerHTML =
+    `<td>${t}</td>` +
+    `<td class="${typeClass}">${side}</td>` +
+    `<td>${stake.toFixed(2)}</td>` +
+    `<td style="color:${profitColor}">${payout.toFixed(2)}</td>` +
+    `<td>${statusHtml}</td>`;
+
+  tbody.insertBefore(tr, tbody.firstChild);  // newest on top
+  const wrap = g('histWrap');
+  wrap.scrollTop = 0;
+  // Keep max 400 rows
+  while (tbody.rows.length > 400) tbody.deleteRow(tbody.rows.length - 1);
+}
+
+function clearHistory() {
+  g('histBody').innerHTML = '<tr><td colspan="5" class="hist-empty">No trades yet</td></tr>';
 }
 
 function renderTickUI() {
@@ -1216,19 +1373,17 @@ function updateKPIs() {
   g('kWL').textContent     = `${wins} / ${losses}`;
   g('kCycles').textContent = cycleCount;
   g('kTP').textContent     = tpTarget.toFixed(2);
-  g('kSL').textContent     = slTarget.toFixed(2);
   if (balance !== null)
     g('kBalance').textContent = `${balance.toFixed(2)} ${currency}`;
 }
 
 // ─── OAUTH INIT ───────────────────────────────────────────────────────────────
 async function initOAuth() {
-  const params      = new URLSearchParams(window.location.search);
-  const code        = params.get('code');
+  const params        = new URLSearchParams(window.location.search);
+  const code          = params.get('code');
   const returnedState = params.get('state');
-  const errorParam  = params.get('error');
+  const errorParam    = params.get('error');
 
-  // Handle error returned by Deriv (e.g. user cancelled)
   if (errorParam) {
     const desc = params.get('error_description') || errorParam;
     addLog('OAuth error: ' + desc, 'err');
@@ -1239,9 +1394,7 @@ async function initOAuth() {
     return;
   }
 
-  // Came back from OAuth with an authorization code
   if (code) {
-    // Validate state to prevent CSRF
     const storedState = sessionStorage.getItem('oauth_state');
     if (!storedState || storedState !== returnedState) {
       addLog('OAuth state mismatch — possible CSRF attack. Aborting.', 'err');
@@ -1251,33 +1404,20 @@ async function initOAuth() {
       window.history.replaceState({}, document.title, REDIRECT_URI);
       return;
     }
-
-    // Clean URL immediately
     window.history.replaceState({}, document.title, REDIRECT_URI);
-
     addLog('Authorization code received. Exchanging for access token…', 'info');
     g('oauthStatus').textContent = 'Exchanging authorization code for token…';
-
     try {
-      const tokenData = await exchangeCodeForToken(code);
+      const tokenData   = await exchangeCodeForToken(code);
       const bearerToken = tokenData.access_token;
-
       if (!bearerToken) throw new Error('No access_token in response');
-
-      // Store the Bearer token as activeToken for the WebSocket authorize call
-      activeToken = bearerToken;
-
-      // Use the WS authorize call to fetch account list and pick currency
-      // We show the account section with a single "token ready" entry
+      activeToken   = bearerToken;
       oauthAccounts = [{ acct: 'OAuth Account', token: bearerToken, currency: 'USD', isVirtual: false }];
-
       g('oauthLoginSection').style.display = 'none';
       g('oauthAcctSection').style.display  = '';
       buildAcctSelector(oauthAccounts);
-
       addLog('Access token obtained. Click CONNECT to authorize and fetch accounts.', 'ok');
       alert2('Logged in via Deriv OAuth 2.0. Click CONNECT to continue.', 'ok');
-
     } catch (err) {
       addLog('Token exchange error: ' + err.message, 'err');
       alert2('Login failed: ' + err.message + '. Please try again.');
@@ -1285,9 +1425,7 @@ async function initOAuth() {
       g('oauthAcctSection').style.display  = 'none';
       g('oauthStatus').textContent = 'Token exchange failed. Please try again.';
     }
-
   } else {
-    // Not yet authenticated — show login button
     g('oauthLoginSection').style.display = '';
     g('oauthAcctSection').style.display  = 'none';
     g('oauthStatus').textContent = 'Not logged in. Click the button above to authenticate with Deriv.';
