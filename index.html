@@ -636,7 +636,9 @@ function lastDigitOf(q) {
 }
 
 function feedDigit(d) {
-  // 1. Update follow counters using previous digit
+  // 1. Update follow-streak counters using previous digit:
+  //    prevDigit's odd/even streak incremented based on parity of d,
+  //    opposite streak for prevDigit reset to 0.
   if (prevDigit !== null) {
     if (d % 2 === 0) {
       digitEvenCount[prevDigit]++;
@@ -650,28 +652,25 @@ function feedDigit(d) {
   digitHistory.push(d);
   if (digitHistory.length > HISTORY_SIZE) {
     digitHistory.shift();
-    // Recompute totals from scratch after window shift
     digitTotal.fill(0);
     digitHistory.forEach(x => digitTotal[x]++);
   } else {
     digitTotal[d]++;
   }
   prevDigit = d;
-  recomputeBestDigits();
+  // 3. Recompute threshold digit lists (after counters updated)
+  recomputeThresholdDigits();
 }
 
-function recomputeBestDigits() {
-  let maxOdd=-1, maxEven=-1;
-  maxOddDigits=[]; maxEvenDigits=[];
-  // First pass: find the highest streak that meets threshold
-  for (let i=0;i<10;i++) {
-    if (digitOddCount[i] >= triggerThreshold && digitOddCount[i] > maxOdd)  maxOdd  = digitOddCount[i];
-    if (digitEvenCount[i] >= triggerThreshold && digitEvenCount[i] > maxEven) maxEven = digitEvenCount[i];
-  }
-  // Second pass: collect all digits tied at that max streak
-  for (let i=0;i<10;i++) {
-    if (maxOdd  > 0 && digitOddCount[i]  === maxOdd)  maxOddDigits.push(i);
-    if (maxEven > 0 && digitEvenCount[i] === maxEven) maxEvenDigits.push(i);
+// Rebuild lists of ALL digits whose follow-streak meets/exceeds threshold.
+// maxOddDigits  = all x where digitOddCount[x]  >= triggerThreshold
+// maxEvenDigits = all x where digitEvenCount[x] >= triggerThreshold
+function recomputeThresholdDigits() {
+  maxOddDigits  = [];
+  maxEvenDigits = [];
+  for (let i = 0; i < 10; i++) {
+    if (digitOddCount[i]  >= triggerThreshold) maxOddDigits.push(i);
+    if (digitEvenCount[i] >= triggerThreshold) maxEvenDigits.push(i);
   }
 }
 
@@ -757,17 +756,20 @@ function onTick(msg) {
   if (pendingOdd  && !pendingOdd.settled)  predetermineResult('ODD',  d%2!==0, d);
   if (pendingEven && !pendingEven.settled) predetermineResult('EVEN', d%2===0, d);
 
-  // ── Evaluate triggers AFTER counters updated ──────────────────────────────
-  // Multi-digit threshold requirement: At least digitCounterFilter digits must meet threshold
-  const enoughOddDigits  = maxOddDigits.length >= digitCounterFilter;
-  const enoughEvenDigits = maxEvenDigits.length >= digitCounterFilter;
+  // ── Evaluate triggers AFTER counters updated by feedDigit() ──────────────
+  // DIGITEVEN fires when:
+  //   (1) digitOddCount[d]  >= triggerThreshold  (d's own odd-follow-streak meets threshold)
+  //   (2) count of ALL digits x where digitOddCount[x]  >= triggerThreshold >= digitCounterFilter
+  // DIGITODD fires when:
+  //   (1) digitEvenCount[d] >= triggerThreshold  (d's own even-follow-streak meets threshold)
+  //   (2) count of ALL digits x where digitEvenCount[x] >= triggerThreshold >= digitCounterFilter
+  const dOddStreakMet  = digitOddCount[d]  >= triggerThreshold;
+  const dEvenStreakMet = digitEvenCount[d] >= triggerThreshold;
+  const triggerEven = dOddStreakMet  && maxOddDigits.length  >= digitCounterFilter;
+  const triggerOdd  = dEvenStreakMet && maxEvenDigits.length >= digitCounterFilter;
 
-  // Triggers fire if the current digit is one of those meeting the threshold AND we have enough such digits
-  const triggerEven = enoughOddDigits && maxOddDigits.includes(d);
-  const triggerOdd  = enoughEvenDigits && maxEvenDigits.includes(d);
-
-  if (triggerEven) { addLog('Digit '+d+' triggered DIGITEVEN ('+maxOddDigits.length+' digits at threshold)','info'); placeSide('EVEN'); }
-  if (triggerOdd)  { addLog('Digit '+d+' triggered DIGITODD ('+maxEvenDigits.length+' digits at threshold)','info');  placeSide('ODD');  }
+  if (triggerEven) { addLog('Digit '+d+' \u2192 DIGITEVEN | odd-streak='+digitOddCount[d]+' threshold='+triggerThreshold+' qualifying digits='+maxOddDigits.length+'/'+digitCounterFilter,'info'); placeSide('EVEN'); }
+  if (triggerOdd)  { addLog('Digit '+d+' \u2192 DIGITODD  | even-streak='+digitEvenCount[d]+' threshold='+triggerThreshold+' qualifying digits='+maxEvenDigits.length+'/'+digitCounterFilter,'info'); placeSide('ODD');  }
 
   updateTriggerInfo(d, triggerOdd, triggerEven);
 }
@@ -1012,14 +1014,13 @@ function renderDigitTable(){
 
 function updateTriggerInfo(d,triggerOdd,triggerEven){
   let msg='Last digit: '+d+' ('+(d%2===0?'even':'odd')+')';
-  if (triggerOdd&&triggerEven) msg+=' → triggered DIGITODD + DIGITEVEN';
-  else if (triggerOdd)         msg+=' → triggered DIGITODD';
-  else if (triggerEven)        msg+=' → triggered DIGITEVEN';
-  else                         msg+=' — no trigger';
-  // Show counter filter status
-  const oddMet=maxOddDigits.length, evenMet=maxEvenDigits.length;
-  msg+='  |  odd-streak ≥'+triggerThreshold+': ['+maxOddDigits.join(',')+'] ('+oddMet+'/'+digitCounterFilter+' needed)';
-  msg+='  |  even-streak ≥'+triggerThreshold+': ['+maxEvenDigits.join(',')+'] ('+evenMet+'/'+digitCounterFilter+' needed)';
+  if (triggerOdd&&triggerEven) msg+=' \u2192 triggered DIGITODD + DIGITEVEN';
+  else if (triggerOdd)         msg+=' \u2192 triggered DIGITODD';
+  else if (triggerEven)        msg+=' \u2192 triggered DIGITEVEN';
+  else                         msg+=' \u2014 no trigger';
+  msg+='  |  d.oddStreak='+digitOddCount[d]+' d.evenStreak='+digitEvenCount[d];
+  msg+='  |  oddQual=['+maxOddDigits.join(',')+'] ('+maxOddDigits.length+'\u2265'+digitCounterFilter+'? '+(maxOddDigits.length>=digitCounterFilter?'\u2713':'\u2717')+')';
+  msg+='  evenQual=['+maxEvenDigits.join(',')+'] ('+maxEvenDigits.length+'\u2265'+digitCounterFilter+'? '+(maxEvenDigits.length>=digitCounterFilter?'\u2713':'\u2717')+')';
   g('triggerInfo').textContent=msg;
 }
 
