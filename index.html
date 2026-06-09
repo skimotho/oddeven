@@ -1172,11 +1172,11 @@ function predetermineResult(sym, side, won, digit) {
   s.symPL=parseFloat((s.symPL+profit).toFixed(2));
   updateBotDD();
   if (side==='OVER4') {
-    if (won){ s.over4W++; wins++; globalLossList.splice(0,5); addLog('[PRE]['+sym+'] ✓ DIGITOVER4 WIN  (digit='+digit+') profit=+'+profit.toFixed(2),'ok'); addHistory(sym,'OVER','WIN',stake,stake+profit,profit,true); }
+    if (won){ s.over4W++; wins++; globalLossList=globalLossList.filter(item=>item>=stake); addLog('[PRE]['+sym+'] ✓ DIGITOVER4 WIN  (digit='+digit+') profit=+'+profit.toFixed(2),'ok'); addHistory(sym,'OVER','WIN',stake,stake+profit,profit,true); }
     else    { s.over4L++; losses++; globalLossList.push(stake); addLog('[PRE]['+sym+'] ✗ DIGITOVER4 LOSS (digit='+digit+') net='+profit.toFixed(2),'err'); addHistory(sym,'OVER','LOSS',stake,0,profit,true); }
     g('over4p-'+sym).innerHTML=''; s.pendingOver4=null;
   } else {
-    if (won){ s.under5W++; wins++; globalLossList.splice(0,5); addLog('[PRE]['+sym+'] ✓ DIGITUNDER5 WIN  (digit='+digit+') profit=+'+profit.toFixed(2),'ok'); addHistory(sym,'UNDER','WIN',stake,stake+profit,profit,true); }
+    if (won){ s.under5W++; wins++; globalLossList=globalLossList.filter(item=>item>=stake); addLog('[PRE]['+sym+'] ✓ DIGITUNDER5 WIN  (digit='+digit+') profit=+'+profit.toFixed(2),'ok'); addHistory(sym,'UNDER','WIN',stake,stake+profit,profit,true); }
     else    { s.under5L++; losses++; globalLossList.push(stake); addLog('[PRE]['+sym+'] ✗ DIGITUNDER5 LOSS (digit='+digit+') net='+profit.toFixed(2),'err'); addHistory(sym,'UNDER','LOSS',stake,0,profit,true); }
     g('under5p-'+sym).innerHTML=''; s.pendingUnder5=null;
   }
@@ -1239,10 +1239,10 @@ function reviseResult(sym, side, stake, won) {
   s.symPL=parseFloat((s.symPL-wrongProfit+correctProfit).toFixed(2));
   updateBotDD();
   if (side==='OVER4') {
-    if (won){ s.over4L--; losses--; s.over4W++; wins++; globalLossList.splice(0,5); }
+    if (won){ s.over4L--; losses--; s.over4W++; wins++; globalLossList=globalLossList.filter(item=>item>=stake); }
     else    { s.over4W--; wins--; s.over4L++; losses++; globalLossList.push(stake); }
   } else {
-    if (won){ s.under5L--; losses--; s.under5W++; wins++; globalLossList.splice(0,5); }
+    if (won){ s.under5L--; losses--; s.under5W++; wins++; globalLossList=globalLossList.filter(item=>item>=stake); }
     else    { s.under5W--; wins--; s.under5L++; losses++; globalLossList.push(stake); }
   }
   updateSymSides(sym); updateKPIs(); checkTPSL();
