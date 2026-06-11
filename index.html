@@ -1193,9 +1193,9 @@ function placeSide(sym, side) {
 
 function calcStake(list) {
   if (!list.length) return initStake;
-  // Sort descending, take up to 5 largest, sum them, multiply by martingale
-  const top5 = list.slice().sort((a,b)=>b-a).slice(0,5);
-  return Math.max(initStake, parseFloat((top5.reduce((a,b)=>a+b,0)*mFactor).toFixed(2)));
+  if (list.length === 1) return Math.max(initStake, parseFloat((list[0] * 2.1).toFixed(2)));
+  const first5 = list.slice(0, 5);
+  return Math.max(initStake, parseFloat((first5.reduce((a,b)=>a+b,0)*mFactor).toFixed(2)));
 }
 
 function wsSendBuy(sym, type, stake, rid) {
@@ -1251,17 +1251,17 @@ function predetermineResult(sym, side, won, digit) {
   updateSymSides(sym); updateKPIs(); updateModeBadge(); checkTPSL();
 }
 
-// Remove up to 5 largest entries from globalLossList that are strictly < winStake
+// Remove up to 5 oldest entries from globalLossList that are strictly < winStake
 function applyWin(winStake) {
-  // Find indices of up to 5 largest values that are < winStake
-  const eligible = globalLossList
-    .map((v,i) => ({v,i}))
-    .filter(x => x.v < winStake)
-    .sort((a,b) => b.v - a.v)  // descending by value
-    .slice(0,5);
-  const removeIdxs = new Set(eligible.map(x=>x.i));
-  const removed = eligible.map(x=>x.v);
-  const newList = globalLossList.filter((_,i) => !removeIdxs.has(i));
+  const removed = [];
+  const newList = [];
+  for (let i = 0; i < globalLossList.length; i++) {
+    if (removed.length < 5 && globalLossList[i] < winStake) {
+      removed.push(globalLossList[i]);
+    } else {
+      newList.push(globalLossList[i]);
+    }
+  }
   return { removed, newList };
 }
 
